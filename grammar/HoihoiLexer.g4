@@ -172,7 +172,9 @@ SLASH: '/';
 MODULO: '%';
 LESS_THAN: '<';
 GREATER_THAN: '>';
-PRIMITIVE: '$';
+EQUIVALENT: '<>';
+VARIABLE: '$';
+NUMBER: '#';
 
 OR: 'or';
 AND: 'and';
@@ -193,11 +195,13 @@ DQUOTE: '"';
 EMPTY: 'empty';
 THING: 'thing';
 
-NUMBER_LITERAL: [0-9]+ ('.' [0-9]*)?;
 STRING_LITERAL
     : QUOTE ('\\' (RN | .) | ~[\\\r\n'])* QUOTE
     | DQUOTE ('\\' (RN | .) | ~[\\\r\n"])* DQUOTE
     ;
+    
+INTEGER_LITERAL: MINUS? [0-9]+;
+FLOAT_LITERAL: MINUS? [0-9]+ '.' ('f' | 'F' | [0-9]*);
 
 IDENTIFIER: [a-zA-Z_][a-zA-Z_0-9]*;
 

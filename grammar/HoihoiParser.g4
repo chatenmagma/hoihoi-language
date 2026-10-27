@@ -86,6 +86,7 @@ comparaision
     | addition NOT_EQUAL addition
     | addition LESS_THAN addition
     | addition GREATER_THAN addition
+    | addition EQUIVALENT addition
     ;
 
 addition
@@ -97,22 +98,35 @@ multiplication
     ;
 
 primary
-    : IDENTIFIER
+    : OPEN_PAREN expr CLOSE_PAREN
+    | IDENTIFIER
     | fun
-    | clusterLiteral
-    | PRIMITIVE primitive
-    | OPEN_PAREN expr CLOSE_PAREN
     | EMPTY
+    | cluster
     ;
 
-clusterLiteral
-    : OPEN_BRACKET (primitive (COMMA primitive)*)? CLOSE_BRACKET
+cluster
+    : vector
+    | bag
+    ;
+
+vector
+    : OPEN_BRACKET (element (COMMA element)*)? CLOSE_BRACKET
     | primitive
+    ;
+
+bag
+    : OPEN_BRASE (element (COMMA element)*)? CLOSE_BRASE
+    ;
+
+element
+    : primitive
+    | expr
     ;
 
 attribute
     : primary (OPEN_BRACKET expr CLOSE_BRACKET)?
-    | primary ((DOT | COLON) IDENTIFIER)?
+    | primary (DOT IDENTIFIER)?
     | primary ((DOT | COLON) fun)?
     ;
 
@@ -122,9 +136,14 @@ fun
       CLOSE_PAREN
     ;
 
+number
+    : INTEGER_LITERAL
+    | FLOAT_LITERAL
+    ;
+
 primitive
-    : MINUS? NUMBER_LITERAL
-    | STRING_LITERAL
+    : STRING_LITERAL
+    | number
     | HIGH
     | NEUTRAL
     | LOW

@@ -60,7 +60,7 @@ namespace hoihoi {
         ~Attribute() = default;  
     };
 
-    using InstancePrimitive = std::variant<std::string, double, TernaryLogical, std::nullptr_t>;
+    using InstancePrimitive = std::variant<std::string, std::int64_t, double, TernaryLogical, std::nullptr_t>;
 
     struct Primitive final: public Expression {
         InstancePrimitive value;
@@ -71,14 +71,20 @@ namespace hoihoi {
         ~Primitive() override = default;
     };
 
+    enum class KindCluster: std::uint8_t {
+        VECTOR,
+        TUPLE,
+        SET,
+        BAG,
+    };
+
     struct ClusterLiteral final: public Expression {
-        std::vector<InstancePrimitive> value;
+        std::vector<std::unique_ptr<Expression>> values;
+        KindCluster kind;
         bool negative;
 
-        ClusterLiteral(SourceLocation location, bool negative = false)
-            : Expression(location), value({}), negative(negative) {}
-        ClusterLiteral(SourceLocation location, std::vector<InstancePrimitive> value, bool negative = false)
-            : Expression(location), value(value), negative(negative) {}
+        ClusterLiteral(SourceLocation location, std::vector<std::unique_ptr<Expression>> values, KindCluster kind = KindCluster::VECTOR, bool negative = false)
+            : Expression(location), values(std::move(values)), kind(kind), negative(negative) {}
         ~ClusterLiteral() override = default;
     };
 
@@ -94,22 +100,6 @@ namespace hoihoi {
         UnaryExpression(SourceLocation location, UnaryOperator op, std::unique_ptr<Expression> value)
             : Expression(location), op(op), value(std::move(value)) {}
         ~UnaryExpression() override = default;
-    };
-
-    enum class BinaryOperator: std::uint8_t {
-        PLUS,
-        MINUS,
-        MUL,
-        DIV,
-        MODULO,
-
-        EQUAL,
-        NOT_EQUAL,
-        LOWER,
-        GREATER,
-        
-        OR,
-        AND
     };
 
     struct BinaryExpression final: public Expression {

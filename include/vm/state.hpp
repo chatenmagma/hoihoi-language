@@ -27,6 +27,8 @@ namespace hoihoi {
             std::size_t limit_frames;
 
             std::unordered_map<std::string, ObjectPtr> variables;
+
+            ObjectPtr& compute_binary_operation(ObjectPtr& valA, const ObjectPtr valB, BinaryOperator operation);
         public:
             State() {
                 variables = runtime.get_init_global();

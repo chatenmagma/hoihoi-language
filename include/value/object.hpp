@@ -16,31 +16,61 @@ namespace hoihoi {
     class Class {
         private:
             std::unordered_map<std::string, ObjectPtr> attributes;
-            std::weak_ptr<Class> parent;
+            Class* parent;
         public:
             Class(const std::string& class_name, std::shared_ptr<Class> parent = nullptr);
             ~Class() = default;
 
             static std::shared_ptr<Class> cluster;
-                static std::shared_ptr<Class> cluster_string;
-                static std::shared_ptr<Class> cluster_ordered;
+                static std::shared_ptr<Class> cluster_thing;
+                static std::shared_ptr<Class> cluster_bag;
+                    static std::shared_ptr<Class> cluster_set;
+                static std::shared_ptr<Class> cluster_vector;
+                    static std::shared_ptr<Class> cluster_string;
+                    static std::shared_ptr<Class> cluster_tuple;
+
+
             static std::shared_ptr<Class> terminal;
+                static std::shared_ptr<Class> terminal_number;
+                    static std::shared_ptr<Class> terminal_integer;
+                    static std::shared_ptr<Class> terminal_float;
                 static std::shared_ptr<Class> terminal_logical;
                 static std::shared_ptr<Class> terminal_character;
                 static std::shared_ptr<Class> terminal_builtin;
                 static std::shared_ptr<Class> terminal_funtion;
+                static std::shared_ptr<Class> terminal_thing;
 
             std::string get_name() const;
 
             ObjectPtr get_attribute(const std::string& name) const {
                 auto it = attributes.find(name);
                 if(it != attributes.end()) return it->second;
-                if(!parent.expired()) return parent.lock()->get_attribute(name);
+                if(parent) return parent->get_attribute(name);
 
                 throw std::invalid_argument("The class do not have the attribute `" + name + "`");
             }
 
             inline void set_attribute(const std::string& name, ObjectPtr object) { attributes.insert_or_assign(name, object); }
+            inline Class& get_parent() const noexcept { return *parent; }
+
+            bool inherence(const Class* target) const noexcept {
+                if(target == this) return true;
+
+                Class* current_parent = parent;
+                while(current_parent) {
+                    if(current_parent == target) return true;
+                    
+                    current_parent = current_parent->parent;
+                }
+
+                return false;
+            }
+
+            inline bool inherence(const std::shared_ptr<Class> target) const {
+                return inherence(target.get());
+            }
+
+            inline std::string to_string() const { return std::format("<class {}>", get_name()); }
     };
 
     class Object {
@@ -56,7 +86,6 @@ namespace hoihoi {
             virtual ~Object() = default;
 
             virtual ObjectPtr copy() const = 0;
-            virtual void assign(const ObjectPtr other) = 0;
 
             virtual bool equal(const ObjectPtr other) const { return this == other.get(); }
 

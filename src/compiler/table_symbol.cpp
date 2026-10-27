@@ -59,6 +59,10 @@ void TableSymbol::scan_expression(const Expression& expr, size_t scope) {
             scan_expression(*expr, scope);
     }
 
+    if(auto* cluster_litteral = dynamic_cast<const ClusterLiteral*>(&expr))
+        for(const auto& expr: cluster_litteral->values)
+            scan_expression(*expr, scope);
+
     if(auto* attribute = dynamic_cast<const Attribute*>(&expr)) {
         scan_expression(*attribute->value, scope);
         scan_expression(*attribute->name, scope);

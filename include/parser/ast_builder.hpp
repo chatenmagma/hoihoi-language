@@ -33,7 +33,7 @@ namespace hoihoi {
             static std::unique_ptr<WhileStatement> build_while_statement(HoihoiParser::WhileStmtContext* ctx);
 
             static std::unique_ptr<Expression> build_expression(HoihoiParser::ExprContext* context);
-            static std::unique_ptr<Function> build_function(HoihoiParser::FunContext* context);
+            static std::unique_ptr<Expression> build_function(HoihoiParser::FunContext* context);
 
             static std::unique_ptr<Expression> build_attribute(HoihoiParser::AttributeContext* context);
 
@@ -46,9 +46,10 @@ namespace hoihoi {
 
             static std::unique_ptr<Expression> build_primary(HoihoiParser::PrimaryContext* context);
 
-            static InstancePrimitive build_primitive(HoihoiParser::PrimitiveContext* context);
+            static std::unique_ptr<Expression> build_primitive(HoihoiParser::PrimitiveContext* context);
+            static InstancePrimitive build_instance_primitive(HoihoiParser::PrimitiveContext* context);
 
-            static std::unique_ptr<ClusterLiteral> build_cluster_literal(HoihoiParser::ClusterLiteralContext * context);
+            static std::unique_ptr<Expression> build_cluster(HoihoiParser::ClusterContext* context);
     };
 }
 

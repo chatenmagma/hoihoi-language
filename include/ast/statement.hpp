@@ -48,13 +48,21 @@ namespace hoihoi {
         ~WhileStatement() override = default;
     };
 
-    struct AssignementStatement final: public Statement {
+    struct AssignementStatement: public Statement {
         std::string name;
         std::unique_ptr<Expression> expression;
 
         AssignementStatement(const std::string& name, std::unique_ptr<Expression> expression)
             : name(name), expression(std::move(expression)) {}
-        ~AssignementStatement() override = default;
+        virtual ~AssignementStatement() override = default;
+    };
+
+    struct AssignementOperationStatement final: public AssignementStatement {
+        BinaryOperator op;
+
+        AssignementOperationStatement(const std::string& name, std::unique_ptr<Expression> expression, BinaryOperator operation)
+            : AssignementStatement(name, std::move(expression)), op(operation) {}
+        ~AssignementOperationStatement() override = default;
     };
 
     struct ExpressionStatement final: public Statement {

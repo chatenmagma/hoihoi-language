@@ -53,43 +53,22 @@ unique_ptr<Statement> AstBuilder::build_statement(HoihoiParser::StmtContext* ctx
 
 unique_ptr<AssignementStatement> AstBuilder::build_assignement_statement(HoihoiParser::AssignContext* ctx) {
     if(ctx->ADD_ASSIGN()) {
-        return make_unique<AssignementStatement>(
+        return make_unique<AssignementOperationStatement>(
             ctx->IDENTIFIER()->getText(),
-            move(make_unique<BinaryExpression>(
-                get_source(ctx->ADD_ASSIGN()->getSymbol()),
-                BinaryOperator::PLUS,
-                move(make_unique<Variable>(
-                    get_source(ctx->IDENTIFIER()->getSymbol()),
-                    ctx->IDENTIFIER()->getText()
-                )),
-                move(build_expression(ctx->expr()))
-            ))
+            build_expression(ctx->expr()),
+            BinaryOperator::PLUS
         );
     } else if(ctx->SUB_ASSIGN()) {
-        return make_unique<AssignementStatement>(
+        return make_unique<AssignementOperationStatement>(
             ctx->IDENTIFIER()->getText(),
-            move(make_unique<BinaryExpression>(
-                get_source(ctx->SUB_ASSIGN()->getSymbol()),
-                BinaryOperator::MINUS,
-                move(make_unique<Variable>(
-                    get_source(ctx->IDENTIFIER()->getSymbol()),
-                    ctx->IDENTIFIER()->getText())
-                ),
-                move(build_expression(ctx->expr()))
-            ))
+            build_expression(ctx->expr()),
+            BinaryOperator::MINUS
         );
     } else if(ctx->MUL_ASSIGN()) {
-        return make_unique<AssignementStatement>(
+        return make_unique<AssignementOperationStatement>(
             ctx->IDENTIFIER()->getText(),
-            move(make_unique<BinaryExpression>(
-                get_source(ctx->MUL_ASSIGN()->getSymbol()),
-                BinaryOperator::MUL,
-                move(make_unique<Variable>(
-                    get_source(ctx->IDENTIFIER()->getSymbol()),
-                    ctx->IDENTIFIER()->getText())
-                ),
-                move(build_expression(ctx->expr()))
-            ))
+            build_expression(ctx->expr()),
+            BinaryOperator::MUL
         );
     } else {
         return make_unique<AssignementStatement>(
@@ -242,6 +221,13 @@ unique_ptr<Expression> AstBuilder::build_compaission(HoihoiParser::ComparaisionC
             move(left),
             move(right)
         );
+    if(ctx->EQUIVALENT())
+        return make_unique<BinaryExpression>(
+            get_source(ctx->EQUIVALENT()->getSymbol()),
+            BinaryOperator::EQUIVALENT,
+            move(left),
+            move(right)
+        );
     
     throw runtime_error("Unknow comparaision");
 }
@@ -379,34 +365,65 @@ unique_ptr<Expression> AstBuilder::build_primary(HoihoiParser::PrimaryContext* c
         return build_function(ctx->fun());
     else if(ctx->expr())
         return build_expression(ctx->expr());
-    else if(ctx->clusterLiteral())
-        return build_cluster_literal(ctx->clusterLiteral());
-    else if(ctx->EMPTY())
-        return make_unique<ClusterLiteral>(get_source(ctx->EMPTY()->getSymbol()));
-    else if(ctx->PRIMITIVE())
-        return make_unique<Primitive>(
-            get_source(ctx->PRIMITIVE()->getSymbol()), 
-            build_primitive(ctx->primitive())
-        );
+    else if(ctx->cluster())
+        return build_cluster(ctx->cluster());
+    else if(ctx->EMPTY()) {
+        vector<unique_ptr<Expression>> values;
+        return make_unique<ClusterLiteral>(get_source(ctx->EMPTY()->getSymbol()), move(values));
+    }
     
     throw runtime_error("Unknow primary expression");
 }
 
-unique_ptr<ClusterLiteral> AstBuilder::build_cluster_literal(HoihoiParser::ClusterLiteralContext* ctx) {
-    vector<InstancePrimitive> value;
+unique_ptr<Expression> AstBuilder::build_cluster(HoihoiParser::ClusterContext* ctx) {
+    vector<unique_ptr<Expression>> values;
 
-    for(auto* primitive: ctx->primitive())
-        value.push_back(build_primitive(primitive));
+    if(ctx->vector()->primitive())
+        values.push_back(build_primitive(ctx->vector()->primitive()));
 
-    return make_unique<ClusterLiteral>(SourceLocation(), move(value), false);
+    vector<HoihoiParser::ElementContext*> elements;
+    KindCluster kind;
+
+    if(ctx->vector()) {
+        elements = ctx->vector()->element();
+        kind = KindCluster::VECTOR;
+    } else if(ctx->bag()) {
+        elements = ctx->bag()->element();
+        kind = KindCluster::BAG;
+    }
+
+
+    for(auto* elem: elements) {
+        if(elem->primitive())
+            values.push_back(build_primitive(elem->primitive()));
+        else
+            values.push_back(build_expression(elem->expr()));
+    }
+
+    return make_unique<ClusterLiteral>(get_source(ctx->getStart()), move(values), kind, false);
 }
 
-unique_ptr<Function> AstBuilder::build_function(HoihoiParser::FunContext* ctx) {
+unique_ptr<Expression> AstBuilder::build_function(HoihoiParser::FunContext* ctx) {
     vector<unique_ptr<Expression>> args;
 
     for(auto* exp: ctx->expr())
         args.push_back(move(build_expression(exp)));
 
+    if(ctx->IDENTIFIER()->getText() == "tuple") {
+        return make_unique<ClusterLiteral>(
+            get_source(ctx->getStart()),
+            move(args),
+            KindCluster::TUPLE,
+            false
+        );
+    } else if(ctx->IDENTIFIER()->getText() == "set") {
+        return make_unique<ClusterLiteral>(
+            get_source(ctx->getStart()),
+            move(args),
+            KindCluster::SET,
+            false
+        );
+    }
   
     return make_unique<Function>(
         get_source(ctx->IDENTIFIER()->getSymbol()),
@@ -421,50 +438,35 @@ unique_ptr<Expression> AstBuilder::build_attribute(HoihoiParser::AttributeContex
     if(!ctx->fun() && !ctx->expr() && !ctx->IDENTIFIER())
         return primary;
 
-    SourceLocation location;
     unique_ptr<Expression> name = nullptr;
     vector<unique_ptr<Expression>> args;
     KindAttribute kind;
 
-    if(ctx->DOT()) {
-        location = get_source(ctx->DOT()->getSymbol());
+    if(ctx->IDENTIFIER()) {
         name = make_unique<Primitive>(
-            location,
-            ctx->fun()->IDENTIFIER()->toString()
-        );
-
-        kind = KindAttribute::CALL;
-
-        for(auto* arg: ctx->fun()->expr())
-            args.push_back(move(build_expression(arg)));
-    } else if(ctx->COLON()) {
-        location = get_source(ctx->COLON()->getSymbol());
-        name = make_unique<Primitive>(
-            location,
-            ctx->fun()->IDENTIFIER()->toString()
-        );
-
-        kind = KindAttribute::SELF_CALL;
-
-        for(auto* arg: ctx->fun()->expr())
-            args.push_back(move(build_expression(arg)));
-    } else if(ctx->IDENTIFIER()) {
-        location = get_source(ctx->IDENTIFIER()->getSymbol());
-        name = make_unique<Primitive>(
-            location,
+            get_source(ctx->IDENTIFIER()->getSymbol()),
             ctx->IDENTIFIER()->toString()
         );
 
         kind = KindAttribute::GET;
-    } else {
-        location = get_source(ctx->OPEN_BRACKET()->getSymbol());
+    } else if(ctx->expr()) {
         name = build_expression(ctx->expr());
         
         kind = KindAttribute::GET;
+    } else {
+        name = make_unique<Primitive>(
+            get_source(ctx->fun()->IDENTIFIER()->getSymbol()),
+            ctx->fun()->IDENTIFIER()->toString()
+        );
+
+        kind = (ctx->DOT())? KindAttribute::CALL : KindAttribute::SELF_CALL;
+
+        for(auto* arg: ctx->fun()->expr())
+            args.push_back(move(build_expression(arg)));
     }
 
     return make_unique<Attribute>(
-        location,
+        get_source(ctx->getStart()),
         move(primary),
         move(name),
         kind,
@@ -472,19 +474,33 @@ unique_ptr<Expression> AstBuilder::build_attribute(HoihoiParser::AttributeContex
     );
 }
 
-InstancePrimitive AstBuilder::build_primitive(HoihoiParser::PrimitiveContext* ctx) {
+std::unique_ptr<Expression> AstBuilder::build_primitive(HoihoiParser::PrimitiveContext* ctx) {
+    return make_unique<Primitive>(
+        get_source(ctx->getStart()),
+        build_instance_primitive(ctx)
+    );
+}
+
+InstancePrimitive AstBuilder::build_instance_primitive(HoihoiParser::PrimitiveContext* ctx) {
     if(ctx->HIGH()) return TernaryLogical::HIGH;
     if(ctx->NEUTRAL()) return TernaryLogical::NEUTRAL;
     if(ctx->LOW()) return TernaryLogical::LOW;
     
-    if(ctx->NUMBER_LITERAL())
-        return (ctx->MINUS()? -1: 1) * stod(ctx->NUMBER_LITERAL()->getText());
+    if(!ctx->number()) {
+        auto s = ctx->STRING_LITERAL()->getText();
+        s.erase(
+            remove_if(s.begin(), s.end(), [](char c) { return c == '"' || c == '\'' || c == '\\'; }),
+            s.end()
+        );
 
-    auto s = ctx->STRING_LITERAL()->getText();
-    s.erase(
-        remove_if(s.begin(), s.end(), [](char c) { return c == '"' || c == '\'' || c == '\\'; }),
-        s.end()
-    );
+        return s;
+    }
 
-    return s;
+    if(ctx->number()->FLOAT_LITERAL())
+        return stod(ctx->number()->FLOAT_LITERAL()->getText());
+
+    if(ctx->number()->INTEGER_LITERAL())
+        return stol(ctx->number()->INTEGER_LITERAL()->getText());
+
+    throw runtime_error("Unknow primitive");
 }

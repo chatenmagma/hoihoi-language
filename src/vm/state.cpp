@@ -7,6 +7,40 @@ using namespace std;
 
 Runtime State::runtime = Runtime();
 
+ObjectPtr& State::compute_binary_operation(ObjectPtr& valA, const ObjectPtr valB, BinaryOperator operation) {
+    switch(operation) {
+        case BinaryOperator::PLUS: valA->add(valB); break;
+        case BinaryOperator::MINUS: valA->sub(valB); break;
+        case BinaryOperator::MUL: valA->mul(valB); break;
+        case BinaryOperator::DIV: valA->div(valB); break;
+        case BinaryOperator::MODULO: break;
+
+        case BinaryOperator::EQUAL: 
+            valA = make_shared<Terminal>(
+                Class::terminal_logical, 
+                valA->equal(valB)? TernaryLogical::HIGH: TernaryLogical::LOW
+            ); 
+
+        break;
+        case BinaryOperator::NOT_EQUAL: 
+            valA = make_shared<Terminal>(
+                Class::terminal_logical, 
+                valA->equal(valB)? TernaryLogical::HIGH: TernaryLogical::LOW
+            ); 
+
+            valA->opposite();                    
+        break;
+        case BinaryOperator::OR: valA = valA->or_operation(valB); break;
+        case BinaryOperator::AND: valA = valA->and_operation(valB); break;
+
+        case BinaryOperator::LOWER: valA = valA->lower_operation(valB); break;
+        case BinaryOperator::GREATER: valA = valA->greater_operation(valB); break;
+        case BinaryOperator::EQUIVALENT:  valA = (valA->size() == valA->size())? Terminal::high: Terminal::low;
+    }
+
+    return valA;
+}
+
 int State::execute(const std::string& source_code) {
     this->frames.clear();
     this->frames.emplace_back(Compiler::compile(source_code));
@@ -97,36 +131,75 @@ int State::execute(const std::string& source_code) {
             case Opcode::JUMP_ABSOLUTE: get_current_frame().pc += inst.operand; break;
             case Opcode::JUMP_IF_FALSE: if(!pop()->is_high()) get_current_frame().pc += inst.operand; break;
 
-            case Opcode::CONST_NUMBER: push(make_shared<String>(std::to_string(inst.operand))); break;
-            case Opcode::CONST_CHAR: push(make_shared<Terminal>(Class::terminal_character, static_cast<char>(inst.operand))); break;
+            case Opcode::CONST_INTEGER64_LOWER:
+            case Opcode::CONST_INTEGER32: push(make_integer(static_cast<int64_t>(inst.operand))); break;
 
-            case Opcode::BUILD_FLAT: push(make_shared<ClusterOrdered>()); break;
+            case Opcode::CONST_FLOAT_LOWER: {
+                push(make_float(bit_cast<double>(static_cast<int64_t>(inst.operand))));
+            } break;
+
+            case Opcode::CONST_INTEGER64_HIGHER: {
+                auto pop_val = pop();
+                auto terminal = static_cast<Terminal*>(pop_val.get());
+                auto higher = (static_cast<uint64_t>(inst.operand) << 32UL) | 0x00000000ffffffff;
+
+                terminal->set_value(bit_cast<int64_t>(get<int64_t>(terminal->get_value()) & higher));
+                
+                push(pop_val);
+            } break;
+
+            case Opcode::CONST_FLOAT_HIGHER: {
+                auto pop_val = pop();
+                auto lower = static_cast<Terminal*>(pop_val.get());
+                auto higher = (static_cast<uint64_t>(inst.operand) << 32UL) | 0x00000000ffffffff;
+
+                
+                double val = bit_cast<double>(bit_cast<uint64_t>(get<double>(lower->get_value())) & higher);
+
+                lower->set_value(val);
+                
+                push(pop_val);
+            } break;
+
+            case Opcode::CONST_CHAR: push(make_character(static_cast<char>(inst.operand))); break;
+            case Opcode::CONST_LOGICAL:
+                push(make_logical(static_cast<TernaryLogical>(inst.operand)));
+            break;
+            case Opcode::CONST_THING: push(
+                    (inst.operand)? Terminal::positive_thing: Terminal::negative_thing
+                ); 
+            break;
+
         
             case Opcode::BUILD_FUNCTION: push(get_current_frame().code.get_const(inst.operand)); break;
 
             case Opcode::BUILD_STRING:
-            case Opcode::BUILD_HEAP:
-            case Opcode::BUILD_HOLE:{
-                vector<ObjectPtr> val = vector<ObjectPtr>(inst.operand);
+            case Opcode::BUILD_VECTOR:
+            case Opcode::BUILD_TUPLE:{
+                vector<ObjectPtr> val = vector<ObjectPtr>(abs(inst.operand));
 
-                for(int32_t i = 0; i < inst.operand; i++)
-                    val[inst.operand - 1 - i] = pop();
+                for(int32_t i = 0; i < abs(inst.operand); i++)
+                    val[abs(inst.operand) - 1 - i] = pop();
                 
                 if(Opcode::BUILD_STRING == inst.opcode)
-                    push(make_shared<String>(move(val)));
-                else
-                    push(make_shared<ClusterOrdered>(move(val), Opcode::BUILD_HOLE == inst.opcode));
+                    push(make_shared<String>(move(val), inst.operand < 0));
+                else if(Opcode::BUILD_VECTOR == inst.opcode)
+                    push(make_shared<Vector>(move(val), inst.operand < 0));
+                else if(Opcode::BUILD_TUPLE == inst.opcode)
+                    push(make_shared<Tuple>(move(val), inst.operand < 0));
             }break;
-            case Opcode::BUILD_LOGICAL:
-                push(make_shared<Terminal>(Class::terminal_logical, static_cast<TernaryLogical>(inst.operand)));
-            break;
 
             case Opcode::UNARY_OP:{
                 try {
                     auto res = pop()->copy();
 
                     switch(static_cast<UnaryOperator>(inst.operand)) {
-                        case UnaryOperator::NOT: res->opposite(); break;
+                        case UnaryOperator::NOT: 
+                            if(res->get_class() == Class::terminal_logical) {
+                                res = make_logical(!res->get_logical());
+                            } else
+                                res->opposite(); 
+                        break;
                     }
 
                     push(res);
@@ -140,39 +213,22 @@ int State::execute(const std::string& source_code) {
             case Opcode::BINARY_OP:{
                 try {
                     auto valB = pop();
-                    auto res = pop()->copy();
+                    auto valA = pop()->copy();
 
-                    switch(static_cast<BinaryOperator>(inst.operand)) {
-                        case BinaryOperator::PLUS: res->add(valB); break;
-                        case BinaryOperator::MINUS: res->sub(valB); break;
-                        case BinaryOperator::MUL: res->mul(valB); break;
-                        case BinaryOperator::DIV: res->div(valB); break;
-                        case BinaryOperator::MODULO: break;
+                    push(this->compute_binary_operation(valA, valB, static_cast<BinaryOperator>(inst.operand)));
+                } catch(exception& e) {
+                    cerr << e.what() << "\n";
+                    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    return 1;
+                }
+            }break;
 
-                        case BinaryOperator::EQUAL: 
-                            res = make_shared<Terminal>(
-                                Class::terminal_logical, 
-                                res->equal(valB)? TernaryLogical::HIGH: TernaryLogical::LOW
-                            ); 
+            case Opcode::ASSIGN_BINARY_OP:{
+                try {
+                    auto valB = pop();
+                    auto valA = pop();
 
-                            break;
-                        case BinaryOperator::NOT_EQUAL: 
-                            res = make_shared<Terminal>(
-                                Class::terminal_logical, 
-                                res->equal(valB)? TernaryLogical::HIGH: TernaryLogical::LOW
-                            ); 
-
-                            res->opposite();
-                            
-                            break;
-                        case BinaryOperator::OR: res = res->or_operation(valB); break;
-                        case BinaryOperator::AND: res = res->and_operation(valB); break;
-
-                        case BinaryOperator::LOWER: res = res->lower_operation(valB); break;
-                        case BinaryOperator::GREATER: res = res->greater_operation(valB); break;
-                    }
-
-                    push(res);
+                    this->compute_binary_operation(valA, valB, static_cast<BinaryOperator>(inst.operand));
                 } catch(exception& e) {
                     cerr << e.what() << "\n";
                     cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;

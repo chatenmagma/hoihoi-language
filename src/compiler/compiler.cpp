@@ -1,4 +1,5 @@
 #include <iostream>
+#include <bit>
 
 #include "compiler/compiler.hpp"
 #include "value/value.hpp"
@@ -13,6 +14,19 @@ void Compiler::insert_globals(const TableSymbol& __symbol) {
 }
 
 size_t Compiler::compile_statement(const Statement& stmt) {
+    if(auto* assign_op = dynamic_cast<const AssignementOperationStatement*>(&stmt)) {
+        switch(symbol.get_type(assign_op->name)) {
+            case VariableType::GLOBAL: code.emit_instruction(Opcode::LOAD_GLOBAL, symbol.get_index(assign_op->name)); break;
+            case VariableType::LOCAL: code.emit_instruction(Opcode::LOAD_LOCAL, symbol.get_index(assign_op->name)); break;
+        }
+
+        size_t nb = compile_expression(*assign_op->expression);
+
+        code.emit_instruction(Opcode::ASSIGN_BINARY_OP, static_cast<int32_t>(assign_op->op));
+
+        return nb + 2;
+    }
+
     if(auto* assign = dynamic_cast<const AssignementStatement*>(&stmt)) {
         size_t nb = compile_expression(*assign->expression);
 
@@ -67,11 +81,23 @@ size_t Compiler::compile_statement(const Statement& stmt) {
 
 size_t Compiler::compile_primitive(const InstancePrimitive prim) {
     if(holds_alternative<double>(prim)) {
-        code.emit_instruction(Opcode::CONST_NUMBER, get<double>(prim));
+        code.emit_instruction(Opcode::CONST_FLOAT_LOWER, static_cast<int32_t>(bit_cast<int64_t>(get<double>(prim))));
+        code.emit_instruction(Opcode::CONST_FLOAT_HIGHER, static_cast<int32_t>(bit_cast<int64_t>(get<double>(prim)) >> 32UL));
+
+        return 2UL;
+    } else if(holds_alternative<std::int64_t>(prim)) {
+        if(get<int64_t>(prim) > 2147483647 || get<int64_t>(prim) < -2147483648) {
+            code.emit_instruction(Opcode::CONST_INTEGER64_LOWER, get<int64_t>(prim));
+            code.emit_instruction(Opcode::CONST_INTEGER64_HIGHER, get<int64_t>(prim) >> 32UL);
+
+            return 2UL;
+        }
         
+        code.emit_instruction(Opcode::CONST_INTEGER32, static_cast<int32_t>(get<int64_t>(prim)));
+
         return 1UL;
     } else if(holds_alternative<TernaryLogical>(prim)) {
-        code.emit_instruction(Opcode::BUILD_LOGICAL, static_cast<int32_t>(get<TernaryLogical>(prim)));
+        code.emit_instruction(Opcode::CONST_LOGICAL, static_cast<int32_t>(get<TernaryLogical>(prim)));
         
         return 1UL;
     } else if(holds_alternative<string>(prim)) {
@@ -176,21 +202,24 @@ size_t Compiler::compile_expression(const Expression& expr) {
     }
 
     if(auto* cluster_literal = dynamic_cast<const ClusterLiteral*>(&expr)) {
-        if(cluster_literal->value.empty()) {
-            code.emit_instruction(Opcode::BUILD_FLAT);
-            return 1;
-        }
-
         size_t nb = 0UL;
         size_t nb_elem = 0UL;
 
-        for(const auto& prim: cluster_literal->value) {
-            nb += compile_primitive(prim);
+        for(const auto& expr: cluster_literal->values) {
+            nb += compile_expression(*expr);
                 
             nb_elem++;
         }
+
+        Opcode opcode;
+        switch (cluster_literal->kind) {
+            case KindCluster::VECTOR: opcode = Opcode::BUILD_VECTOR; break;
+            case KindCluster::BAG: opcode = Opcode::BUILD_BAG; break;
+            case KindCluster::TUPLE: opcode = Opcode::BUILD_TUPLE; break;
+            case KindCluster::SET: opcode = Opcode::BUILD_SET; break;
+        }
         
-        code.emit_instruction(cluster_literal? Opcode::BUILD_HEAP: Opcode::BUILD_HOLE, nb_elem);
+        code.emit_instruction(opcode, nb_elem * ((cluster_literal->negative)? -1: 1));
 
         return nb + 1;
     }

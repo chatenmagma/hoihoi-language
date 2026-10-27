@@ -88,6 +88,7 @@ void AstPrinter::print_expression(const Expression& expr, int indent) {
             case BinaryOperator::AND: cout << "&&" << endl; break;
             case BinaryOperator::LOWER: cout << "<" << endl; break;
             case BinaryOperator::GREATER: cout << ">" << endl; break;
+            case BinaryOperator::EQUIVALENT: cout << "<>" << endl; break;
         }
 
         print_expression(*binary->right, indent + 2);

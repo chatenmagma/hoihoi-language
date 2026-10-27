@@ -5,21 +5,46 @@
 #include <string>
 
 namespace hoihoi {
+    enum class BinaryOperator: std::uint8_t {
+        PLUS,
+        MINUS,
+        MUL,
+        DIV,
+        MODULO,
+
+        EQUAL,
+        NOT_EQUAL,
+        LOWER,
+        GREATER,
+        EQUIVALENT,
+        
+        OR,
+        AND
+    };
+    
     enum class Opcode {
         NOP,
         HALT,
 
         CONST_OBJ,
-        CONST_NUMBER,
+
+        CONST_INTEGER32,
+        CONST_INTEGER64_LOWER,
+        CONST_INTEGER64_HIGHER,
+
+        CONST_FLOAT_LOWER,
+        CONST_FLOAT_HIGHER,
         CONST_CHAR,
+        CONST_LOGICAL,
+        CONST_THING,
 
         BUILD_FUNCTION,
         BUILD_STRING,
 
-        BUILD_HEAP,
-        BUILD_FLAT,
-        BUILD_HOLE,
-        BUILD_LOGICAL,
+        BUILD_BAG,
+        BUILD_SET,
+        BUILD_TUPLE,
+        BUILD_VECTOR,
 
         PUSH,
         POP,
@@ -39,7 +64,8 @@ namespace hoihoi {
         RETURN,
 
         UNARY_OP,
-        BINARY_OP
+        BINARY_OP,
+        ASSIGN_BINARY_OP
     };
 
     inline std::string to_string_opcode(Opcode op) {
@@ -47,14 +73,23 @@ namespace hoihoi {
             case Opcode::NOP: return "NOP"; 
             case Opcode::HALT: return "HALT"; 
             case Opcode::CONST_OBJ: return "CONST_OBJ"; 
-            case Opcode::CONST_NUMBER: return "CONST_NUMBER"; 
+            case Opcode::CONST_INTEGER32: return "CONST_INTEGER32"; 
+            case Opcode::CONST_INTEGER64_LOWER: return "CONST_INTEGER64_LOWER"; 
+            case Opcode::CONST_INTEGER64_HIGHER: return "CONST_INTEGER64_HIGHER"; 
+            case Opcode::CONST_FLOAT_LOWER: return "CONST_FLOAT_LOWER"; 
+            case Opcode::CONST_FLOAT_HIGHER: return "CONST_FLOAT_HIGHER"; 
             case Opcode::CONST_CHAR: return "CONST_CHAR"; 
+            case Opcode::CONST_LOGICAL: return "CONST_LOGICAL";
+            case Opcode::CONST_THING: return "CONST_THING";
+
             case Opcode::BUILD_FUNCTION: return "BUILD_FUNCTION";
             case Opcode::BUILD_STRING: return "BUILD_STRING"; 
-            case Opcode::BUILD_HEAP: return "BUILD_HEAP"; 
-            case Opcode::BUILD_FLAT: return "BUILD_FLAT"; 
-            case Opcode::BUILD_HOLE: return "BUILD_HOLE";
-            case Opcode::BUILD_LOGICAL: return "BUILD_LOGICAL";
+            
+            case Opcode::BUILD_BAG: return "BUILD_BAG";
+            case Opcode::BUILD_SET: return "BUILD_SET";
+            case Opcode::BUILD_TUPLE: return "BUILD_TUPLE";
+            case Opcode::BUILD_VECTOR: return "BUILD_VECTOR";
+
             case Opcode::PUSH: return "PUSH"; 
             case Opcode::POP: return "POP"; 
             case Opcode::LOAD_CONST: return "LOAD_CONST"; 
@@ -70,6 +105,7 @@ namespace hoihoi {
             case Opcode::RETURN: return "RETURN"; 
             case Opcode::UNARY_OP: return "UNARY_OP";
             case Opcode::BINARY_OP: return "BINARY_OP";
+            case Opcode::ASSIGN_BINARY_OP: return "ASSIGN_BINARY_OP";
         }
 
         return "NOT_DEF_BUT_NOP";

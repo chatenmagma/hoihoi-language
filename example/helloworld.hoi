@@ -1,6 +1,9 @@
-A = [1, 2]
-B = [1, 2]
+my_var = "hello world"
 
-C = $"hello"
+print(my_var)
 
-enumare((empty - B):split())
+test = [1, 2]
+test2 = [10, 20, 30]
+test3 = tuple(1, 2)
+
+print(test + test3)

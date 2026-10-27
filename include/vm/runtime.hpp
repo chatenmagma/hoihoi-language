@@ -7,7 +7,6 @@ namespace hoihoi {
     class Runtime {
         private:
             void print_ident(std::size_t indent);
-            void enumare(const ObjectPtr o, std::size_t indent = 0UL); 
             void print(std::vector<ObjectPtr> args);
         public:
             Runtime() { init_attributes(); }
