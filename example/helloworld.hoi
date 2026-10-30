@@ -1,9 +1,6 @@
 my_var = "hello world"
+two_lines = "hello world\nI am really happy"
 
 print(my_var)
-
-test = [1, 2]
-test2 = [10, 20, 30]
-test3 = tuple(1, 2)
-
-print(test + test3)
+print(two_lines)
+print(two_lines + "But wrappe in cluster plz")

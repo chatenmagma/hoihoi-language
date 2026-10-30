@@ -75,21 +75,16 @@ namespace hoihoi {
         VECTOR,
         TUPLE,
         SET,
+        STRING,
         BAG,
     };
 
     struct ClusterLiteral final: public Expression {
         std::vector<std::unique_ptr<Expression>> values;
         KindCluster kind;
-        bool negative;
-
-        ClusterLiteral(SourceLocation location, std::vector<std::unique_ptr<Expression>> values, KindCluster kind = KindCluster::VECTOR, bool negative = false)
-            : Expression(location), values(std::move(values)), kind(kind), negative(negative) {}
+        ClusterLiteral(SourceLocation location, std::vector<std::unique_ptr<Expression>> values, KindCluster kind = KindCluster::VECTOR)
+            : Expression(location), values(std::move(values)), kind(kind) {}
         ~ClusterLiteral() override = default;
-    };
-
-    enum class UnaryOperator: std::uint8_t {
-        NOT
     };
 
     struct UnaryExpression final: public Expression {

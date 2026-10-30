@@ -9,10 +9,6 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS off)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-overloaded-virtual")
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2")
-
 # ANLR
 set(ANTLR_JAR "/opt/antlr/antlr.jar")
 set(GRAMMAR_LEXER "${CMAKE_CURRENT_SOURCE_DIR}/grammar/HoihoiLexer.g4")
@@ -23,7 +19,7 @@ if(NOT EXISTS "${ANTLR_JAR}")
     message(FATAL_ERROR "ANTLR jar not found at ${ANTLR_JAR}")
 endif()
 
-find_package(Java REQUIRED)
+find_package(Java REQUIRED COMPONENTS Runtime)
 
 # Generated files by ANTLR
 set(ANTLR_GENERATED_SOURCES
@@ -60,6 +56,7 @@ add_custom_command(
 
     COMMENT "Generating C++ par
 #include ser from ANTLR grammar"
+    VERBATIM
 )
 
 add_custom_target(antlr_generate
@@ -99,3 +96,42 @@ target_link_libraries(hoihoi
 set_target_properties(hoihoi PROPERTIES
     BUILD_RPATH "/usr/local/lib"
 )
+
+# Compile warning
+
+target_compile_options(hoihoi PRIVATE 
+    -Wall 
+    -Wextra 
+    -Wno-overloaded-virtual
+)
+
+# Debug configuration
+
+target_compile_options(hoihoi PRIVATE
+    $<$<CONFIG:Debug>: -g>
+    $<$<CONFIG:Debug>: -O0>
+    $<$<CONFIG:Release>: -O2>
+    $<$<CONFIG:Release>: -DNDEBUG>
+)
+
+target_compile_options(hoihoi PRIVATE
+    $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    $<$<CONFIG:Debug>:-fno-omit-frame-pointer>
+)
+
+target_link_options(hoihoi PRIVATE
+    $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+)
+
+# Link-Time Optimization (LTO)
+include(CheckIPOSupported)
+check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
+
+if(IPO_SUPPORTED)
+    set_property(TARGET hoihoi PROPERTY
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
+    )
+    message(STATUS "Release LTO enabled")
+else()
+    message(STATUS "Release LTO unavailable: ${IPO_ERROR}")
+endif()

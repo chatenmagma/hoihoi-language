@@ -1,0 +1,29 @@
+# Let's introduce the cluster
+# By default all primtive are wrapped in a cluster
+# Then it is equivalent to do "hi" <=> ["hi"]
+
+# Operation +
+
+print(1 + 1)                                # Wont return 2 but [1, 1], because hoihoi is cluster paradigme
+print(["hello", "world"] + "very pretty")   # => ["hello", "world", "very pretty"]
+print(-[1] + 18)                            # => []
+
+# Operation -
+
+print(1 - 1)                                # => []
+print([1, 2] - "hi")                        # => []
+print(empty - 1)                            # => -[1]
+
+# Operation *
+# This operator does the cartesian operator
+
+print(18 * 18)                              # => [(18, 18)]
+print([8, "thing"] * [])                    # => []
+print(1 * 2)                                # => [(1, 2)]
+print(2 * 1)                                # => [(2, 1)]
+
+print(make_thing())                         # => <neutral cluster_things with 0 elements>
+print(make_thing(10))                       # => <high cluster_things with 10 elements>
+print(make_thing(10) - [1, 2])              # => <high cluster_things with 8 elements>
+print(make_thing(100) - make_thing(100))    # => <neutral cluster_things with 0 elements>
+print(make_thing(100) - make_thing(101))    # => <low cluster_things with 1 elements>

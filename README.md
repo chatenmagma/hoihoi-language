@@ -7,7 +7,7 @@
 You need install the jar antlr4 into /opt/antlr/antlr.jar. And the lib for C language into /usr/local/lib
 
 ```bash
-cmake . -B build
-cmake --build build --config Realese
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
 ./build/hoihoi <file in .hoi>
 ```

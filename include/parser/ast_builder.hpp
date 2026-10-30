@@ -27,6 +27,7 @@ namespace hoihoi {
             static std::unique_ptr<AssignementStatement> build_assignement_statement(HoihoiParser::AssignContext* context);
             static std::unique_ptr<ExpressionStatement> build_expression_statement(HoihoiParser::ExprContext* context);
             static std::unique_ptr<FunctionDeclaration> build_function_declaration_statement(HoihoiParser::FunStmtContext* context);
+            static std::unique_ptr<Statement> build_import_statement(HoihoiParser::ImportStmtContext* context);
 
             static std::unique_ptr<IfStatement> build_if_statement(HoihoiParser::IfStmtContext* context);
             static std::unique_ptr<IfStatement> build_elif(HoihoiParser::IfStmtContext* ctx, std::vector<std::unique_ptr<Statement>> end_else, size_t index);
@@ -35,7 +36,7 @@ namespace hoihoi {
             static std::unique_ptr<Expression> build_expression(HoihoiParser::ExprContext* context);
             static std::unique_ptr<Expression> build_function(HoihoiParser::FunContext* context);
 
-            static std::unique_ptr<Expression> build_attribute(HoihoiParser::AttributeContext* context);
+            static std::unique_ptr<Expression> build_attribute(std::unique_ptr<Expression> value, HoihoiParser::AttributeContext* context);
 
             static std::unique_ptr<Expression> build_compaission(HoihoiParser::ComparaisionContext* context);
             static std::unique_ptr<Expression> build_or(HoihoiParser::OrContext* context);

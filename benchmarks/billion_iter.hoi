@@ -1,0 +1,6 @@
+# Make a simple iteration without complex code
+
+iter = make_thing(1000000000)
+
+while iter:
+    iter -= 1

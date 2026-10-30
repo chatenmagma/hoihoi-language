@@ -1,0 +1,18 @@
+# Test if the operation are well done
+
+# Operator +
+
+print([] + [])                          # []
+print(empty + empty)                    # []
+print('1' + '8')                        # ['1', '8']
+print(1 + 2)                            # [1, 2]
+print("test" + 18 + 'T')                # ["test", 18, 'T']
+print([1, 2, 3] + ["A", "BC", "D"])     # [1, 2, 3, "A", "BC", "D"]
+
+# operator -
+
+print([] - [])                          # []
+print(empty - empty)                    # []
+print(1 - 1)                            # []
+print(1 - 'z')                          # []
+print([1, 2, 3] - [1, "za"])            # 1

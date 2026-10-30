@@ -1,0 +1,19 @@
+# A little game more or less
+
+import math
+
+num = ((math.range(1, 101)):to_bag()):front()
+num_write = -1
+cmp = make_thing()
+
+while num != num_write:
+    num_write = int(input("Find your number"))
+
+    if math.lower(num_write, num):
+        print("Higher")
+    else:
+        print("Lower")
+
+    cmp += 1
+
+print("congras you find my number, you find my number in", math.len(cmp), "turns")

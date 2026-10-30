@@ -22,7 +22,7 @@ int run_file(const string& path_file) {
 
     while(getline(file, line)) source += line + '\n';
 
-    return State().execute(source);
+    return State().execute(path_file, source);
 }
 
 int main(int argc, char** argv) {

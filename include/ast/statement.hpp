@@ -14,6 +14,14 @@ namespace hoihoi {
         virtual ~Statement() = default;
     };
 
+    struct ImportStatement final: public Statement {
+        std::string path;
+
+        ImportStatement(std::string path)
+            : path(std::move(path)) {}
+        ~ImportStatement() = default;
+    };
+
     struct IfStatement final: public Statement {
         std::unique_ptr<Expression> condition;
 

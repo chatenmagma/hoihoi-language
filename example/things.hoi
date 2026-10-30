@@ -1,0 +1,3 @@
+A = make_thing()
+
+print(A)

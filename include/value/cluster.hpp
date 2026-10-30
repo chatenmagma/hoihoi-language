@@ -1,13 +1,21 @@
 #ifndef HOIHOI_CLUSTER_HPP
 #define HOIHOI_CLUSTER_HPP
 
+#include <iterator>
 #include <vector>
+#include <unordered_set>
+
+#include "cluster_iterator.hpp"
+#include "terminal.hpp"
 
 #include "object.hpp"
 
 namespace hoihoi {
     class Cluster: public Object {
         public:
+            using iterator = ClusterIterator;
+            using const_iterator = ClusterConstIterator;
+
             Cluster(std::shared_ptr<Class> klass)
                 : Object(klass) {}
             Cluster(std::shared_ptr<Class> klass, bool negative)
@@ -40,9 +48,18 @@ namespace hoihoi {
             }
 
             virtual std::shared_ptr<Cluster> make_empty(std::size_t reserve = 0UL) const = 0;
+            virtual std::shared_ptr<Cluster> make_new(std::vector<ObjectPtr> values) const = 0;
 
             virtual ObjectPtr at(const std::string& key) const = 0;
             virtual ObjectPtr at(std::size_t index) const = 0;
+
+            virtual void replace(const std::string& key, ObjectPtr object) = 0;
+            virtual void replace(const std::size_t key, ObjectPtr object) = 0;
+
+            virtual iterator begin() = 0;
+            virtual iterator end() = 0;
+            virtual const_iterator begin() const = 0;
+            virtual const_iterator end() const = 0;
 
             virtual void clear() = 0;
 
@@ -53,6 +70,9 @@ namespace hoihoi {
 
             virtual std::vector<ObjectPtr> get_values() const = 0;
             virtual void set_values(std::vector<ObjectPtr> n_values) = 0;
+
+            virtual void mul(const ObjectPtr other) override;
+            virtual void div(const ObjectPtr other) override;
     };
 
     class ClusterThing final: public Cluster {
@@ -74,9 +94,33 @@ namespace hoihoi {
             std::shared_ptr<Cluster> make_empty(std::size_t) const override {
                 return std::make_shared<ClusterThing>();
             }
+            std::shared_ptr<Cluster> make_new(std::vector<ObjectPtr> values) const override {
+                return std::make_shared<ClusterThing>(values.size());
+            }
 
             ObjectPtr at(const std::string& key) const override { return at(std::stoul(key)); }
             ObjectPtr at(std::size_t index) const override;
+
+            void replace(const std::string&, ObjectPtr) override {}
+            void replace(std::size_t, ObjectPtr) override {}
+
+            iterator begin() override {
+                auto val = make_thing(is_negative());
+                return iterator::repeated(val, 0UL, values); 
+            }
+            iterator end() override {
+                auto val = make_thing(is_negative());
+                return iterator::repeated(val, values, values);
+            }
+
+            const_iterator begin() const override {
+                auto val = make_thing(is_negative());
+                return const_iterator::repeated(val, 0UL, values); 
+            }
+            const_iterator end() const override {
+                auto val = make_thing(is_negative());
+                return const_iterator::repeated(val, values, values);
+            }
 
             void push(ObjectPtr) override { values++; };
             ObjectPtr pop() override;
@@ -128,7 +172,7 @@ namespace hoihoi {
                 values *= other->size();
 
                 if(get_logical() != other->get_logical()) opposite();
-                else if(get_logical() == TernaryLogical::LOW && other->get_logical() == TernaryLogical::LOW) opposite();
+                else if(get_logical() == HOI_TERNARY_LOW && other->get_logical() == HOI_TERNARY_LOW) opposite();
             }
 
             void div(const ObjectPtr other) override {
@@ -137,10 +181,19 @@ namespace hoihoi {
                 values /= other->size();
 
                 if(get_logical() != other->get_logical()) opposite();
-                else if(get_logical() == TernaryLogical::LOW && other->get_logical() == TernaryLogical::LOW) opposite();
+                else if(get_logical() == HOI_TERNARY_LOW && other->get_logical() == HOI_TERNARY_LOW) opposite();
             }
 
             std::size_t size() const override { return values; }
+            std::size_t hash() const override { return std::hash<std::size_t>()(values); }
+
+            std::string to_string() const override {
+                return std::format(
+                    "<{} cluster_things with {} elements>",
+                    hoihoi::to_string(get_logical()),
+                    values
+                );
+            }
     };
 
     class Tuple final: public Cluster {
@@ -157,15 +210,23 @@ namespace hoihoi {
 
             // ====== CLUSTER METHOD =====
 
-            std::shared_ptr<Cluster> make_empty(std::size_t reserve = 0UL) const override {
-                auto tmp = std::make_shared<Tuple>();
-                tmp->reserve(reserve);
-
-                return tmp;
+            std::shared_ptr<Cluster> make_empty(std::size_t) const override {
+                return std::make_shared<Tuple>();
+            }
+            std::shared_ptr<Cluster> make_new(std::vector<ObjectPtr> values) const override {
+                return std::make_shared<Tuple>(std::move(values));
             }
 
             ObjectPtr at(const std::string& key) const override { return values.at(std::stoul(key)); }
             ObjectPtr at(std::size_t index) const override { return values.at(index); }
+
+            void replace(const std::string& key, ObjectPtr o) override { replace(std::stoul(key), std::move(o)); }
+            void replace(std::size_t index, ObjectPtr o) override { values[index] = o; }
+
+            iterator begin() override { return iterator(values.begin()); }
+            iterator end() override { return iterator(values.end()); }
+            const_iterator begin() const override { return const_iterator(values.begin()); }
+            const_iterator end() const override { return const_iterator(values.end()); }
 
             void push(ObjectPtr) override { throw std::runtime_error("You cannot push to a tuple"); };
             ObjectPtr pop() override { throw std::runtime_error("You cannot pop from a tuple"); };
@@ -190,6 +251,13 @@ namespace hoihoi {
             std::string to_string() const override;
 
             std::size_t size() const override { return values.size(); }
+            std::size_t hash() const override {
+                std::size_t seed = 0UL;
+                for(const auto& obj: values) {
+                    seed ^= obj->hash() + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                }
+                return seed;
+            }
     };
 
     class String final: public Cluster {
@@ -214,9 +282,20 @@ namespace hoihoi {
 
                 return tmp;
             }
+            std::shared_ptr<Cluster> make_new(std::vector<ObjectPtr> values) const override {
+                return std::make_shared<String>(std::move(values));
+            }
 
             ObjectPtr at(const std::string& key) const override { return at(std::stoul(key)); }
             ObjectPtr at(std::size_t index) const override;
+
+            void replace(const std::string&, ObjectPtr) override { throw std::invalid_argument("You cannot replace from str"); }
+            void replace(std::size_t, ObjectPtr) override { throw std::invalid_argument("You cannot replace from str"); }
+
+            iterator begin() override { return iterator::character(value.begin(), value.end()); }
+            iterator end() override { return iterator::character(value.end(), value.end()); }
+            const_iterator begin() const override { return const_iterator::character(value.begin(), value.end()); }
+            const_iterator end() const override { return const_iterator::character(value.cend(), value.cend()); }
 
             void push(ObjectPtr other) override;
             ObjectPtr pop() override;
@@ -280,6 +359,7 @@ namespace hoihoi {
             std::string to_string() const override { return value; }
 
             std::size_t size() const override { return value.size(); }
+            std::size_t hash() const override { return std::hash<std::string>()(value); }
     };
 
     class Vector: public Cluster {
@@ -290,6 +370,8 @@ namespace hoihoi {
                 : Cluster(Class::cluster_vector) {}
             Vector(bool negative)
                 : Cluster(Class::cluster_vector, negative) {}
+            Vector(ObjectPtr object, bool negative = false)
+                : Cluster(Class::cluster_vector, negative) { this->values.push_back(object); }
             Vector(std::vector<ObjectPtr> values, bool negative = false)
                 : Cluster(Class::cluster_vector, negative), values(std::move(values)) {}
             ~Vector() override = default;
@@ -302,9 +384,20 @@ namespace hoihoi {
 
                 return tmp;
             }
+            std::shared_ptr<Cluster> make_new(std::vector<ObjectPtr> values) const override {
+                return std::make_shared<Vector>(std::move(values));
+            }
 
             ObjectPtr at(const std::string& key) const override { return values.at(std::stoul(key)); }
             ObjectPtr at(std::size_t index) const override { return values.at(index); }
+
+            void replace(const std::string& key, ObjectPtr o) override { replace(std::stoul(key), std::move(o)); }
+            void replace(std::size_t index, ObjectPtr o) override { this->values[index] = o; }
+
+            iterator begin() override { return iterator(values.begin()); }
+            iterator end() override { return iterator(values.end()); }
+            const_iterator begin() const override { return const_iterator(values.cbegin()); }
+            const_iterator end() const override { return const_iterator(values.cend()); }
 
             void push(ObjectPtr other) override { values.push_back(other); };
             ObjectPtr pop() override { auto val = values.back(); values.pop_back(); return val; };
@@ -313,7 +406,7 @@ namespace hoihoi {
             void reserve(std::size_t reserve) override { values.reserve(reserve); }
 
             std::vector<ObjectPtr> get_values() const override { return values; }
-            void set_values(std::vector<ObjectPtr> new_values) override { values = new_values; }
+            void set_values(std::vector<ObjectPtr> new_values) override { values = std::move(new_values); }
 
             // ====== OBJECT METHOD =======
 
@@ -323,13 +416,126 @@ namespace hoihoi {
 
             void add(const ObjectPtr other) override;
             void sub(const ObjectPtr other) override;
-            void mul(const ObjectPtr other) override;
-            void div(const ObjectPtr other) override;
 
             std::size_t size() const override { return values.size(); }
 
             std::string to_string() const override;
+            std::size_t hash() const override {
+                std::size_t seed = 0UL;
+                for(const auto& obj: values) {
+                    seed ^= obj->hash() + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                }
+                return seed;
+            }
     };
+
+    class Bag: public Cluster {
+        private:
+            std::vector<ObjectPtr> values;
+        public:
+            Bag()
+                : Cluster(Class::cluster_bag) {}
+            Bag(bool negative)
+                : Cluster(Class::cluster_bag, negative) {}
+            Bag(std::vector<ObjectPtr> values, bool negative = false)
+                : Cluster(Class::cluster_bag, negative), values(std::move(values)) {}
+            ~Bag() override = default;
+
+            // ====== CLUSTER METHOD =====
+
+            std::shared_ptr<Cluster> make_empty(std::size_t reserve = 0UL) const override {
+                auto tmp = std::make_shared<Bag>();
+                tmp->reserve(reserve);
+
+                return tmp;
+            }
+            std::shared_ptr<Cluster> make_new(std::vector<ObjectPtr> values) const override {
+                return std::make_shared<Bag>(std::move(values));
+            }
+
+            ObjectPtr at(const std::string& key) const override { return at(std::stoul(key)); }
+            ObjectPtr at(std::size_t index) const override;
+
+            void replace(const std::string& key, ObjectPtr o) override { replace(std::stoul(key), std::move(o)); }
+            void replace(std::size_t index, ObjectPtr o) override;
+
+            iterator begin() override { return iterator(values.begin()); }
+            iterator end() override { return iterator(values.end()); }
+            const_iterator begin() const override { return const_iterator(values.cbegin()); }
+            const_iterator end() const override { return const_iterator(values.cend()); }
+
+            void push(ObjectPtr other) override { values.push_back(other); };
+            ObjectPtr pop() override;
+
+            void clear() override { values.clear(); }
+            void reserve(std::size_t reserve) override { values.reserve(reserve); }
+
+            std::vector<ObjectPtr> get_values() const override;
+            void set_values(std::vector<ObjectPtr> new_values) override { values = new_values; }
+
+            // ====== OBJECT METHOD =======
+
+            ObjectPtr copy() const override { return std::make_shared<Bag>(values, negative); }
+
+            bool equal(const ObjectPtr other) const override;
+
+            void add(const ObjectPtr other) override;
+            void sub(const ObjectPtr other) override;
+
+            std::string to_string() const override;
+            
+            std::size_t size() const override { return values.size(); }
+            std::size_t hash() const override {
+                std::size_t seed = 0UL;
+                for(const auto& obj: values) {
+                    seed ^= obj->hash() + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                }
+                return seed;
+            }
+    };
+
+    inline std::shared_ptr<Cluster> to_cluster(ObjectPtr o) {
+        if(!o)
+            throw std::invalid_argument("None value");
+        if(!o->inherence(Class::cluster))
+            throw std::invalid_argument("Must a cluster inherence");
+        
+        return std::static_pointer_cast<Cluster>(o);
+    }
+
+    inline std::int64_t get_integer(const ObjectPtr& o) {
+        if(!o) throw std::invalid_argument("None value");
+        if(!o->get_class()->inherence(Class::cluster)) throw std::invalid_argument("You must inhrence cluster");
+        auto* cluster = static_cast<Cluster*>(o.get()); 
+        if(
+            !cluster->one_terminal() && (cluster->at(0)->inherence(Class::terminal_number))
+        ) throw std::invalid_argument("You must have only one number");
+        
+        if(cluster->at(0)->get_class() == Class::terminal_integer) {
+            return get<std::int64_t>(static_cast<Terminal*>(cluster->at(0).get())->get_value());
+        } else if(cluster->at(0)->get_class() == Class::terminal_float) {
+            return static_cast<std::int64_t>(get<double>(static_cast<Terminal*>(cluster->at(0).get())->get_value()));
+        }
+
+        throw std::invalid_argument("Unsupport formatage number of `" + cluster->at(0)->get_class()->get_name()  + "` to integer");
+    }
+
+    inline double get_float(const ObjectPtr& o) {
+        if(!o) throw std::invalid_argument("None value");
+        if(!o->get_class()->inherence(Class::cluster)) throw std::invalid_argument("You must inhrence cluster");
+        auto* cluster = static_cast<Cluster*>(o.get()); 
+        if(
+            !cluster->one_terminal() && (cluster->at(0)->inherence(Class::terminal_number))
+        ) throw std::invalid_argument("You must have only one number");
+        
+        if(cluster->at(0)->get_class() == Class::terminal_integer) {
+            return static_cast<double>(get<std::int64_t>(static_cast<Terminal*>(cluster->at(0).get())->get_value()));
+        } else if(cluster->at(0)->get_class() == Class::terminal_float) {
+            return get<double>(static_cast<Terminal*>(cluster->at(0).get())->get_value());
+        }
+
+        throw std::invalid_argument("Unsupport formatage number of `" + cluster->at(0)->get_class()->get_name()  + "` to integer");
+    }
 }
 
 #endif /* HOIHOI_CLUSTER_HPP */

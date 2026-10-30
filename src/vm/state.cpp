@@ -1,4 +1,5 @@
 #include "vm/state.hpp"
+#include "vm/module.hpp"
 
 #include "compiler/compiler.hpp"
 
@@ -6,6 +7,11 @@ using namespace hoihoi;
 using namespace std;
 
 Runtime State::runtime = Runtime();
+
+void State::print_error_location() {
+    cerr << "The error from module `" << ((main_module)? "__main__": path.stem().string()) << "`\n";
+    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+}
 
 ObjectPtr& State::compute_binary_operation(ObjectPtr& valA, const ObjectPtr valB, BinaryOperator operation) {
     switch(operation) {
@@ -18,17 +24,14 @@ ObjectPtr& State::compute_binary_operation(ObjectPtr& valA, const ObjectPtr valB
         case BinaryOperator::EQUAL: 
             valA = make_shared<Terminal>(
                 Class::terminal_logical, 
-                valA->equal(valB)? TernaryLogical::HIGH: TernaryLogical::LOW
+                valA->equal(valB)? HOI_TERNARY_HIGH: HOI_TERNARY_LOW
             ); 
 
         break;
         case BinaryOperator::NOT_EQUAL: 
-            valA = make_shared<Terminal>(
-                Class::terminal_logical, 
-                valA->equal(valB)? TernaryLogical::HIGH: TernaryLogical::LOW
-            ); 
-
-            valA->opposite();                    
+            valA = make_logical(
+                !valA->equal(valB)? HOI_TERNARY_HIGH: HOI_TERNARY_LOW
+            );                    
         break;
         case BinaryOperator::OR: valA = valA->or_operation(valB); break;
         case BinaryOperator::AND: valA = valA->and_operation(valB); break;
@@ -61,7 +64,7 @@ int State::execute(const std::string& source_code) {
                     push(variables[get_current_frame().code.get_name(inst.operand)]);
                 else {
                     cerr << "Not definied the global variable `" << get_current_frame().code.get_name(inst.operand) << "`\n";
-                    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
             break;
@@ -73,10 +76,19 @@ int State::execute(const std::string& source_code) {
             break;
             case Opcode::LOAD_ATTRIBUTE: {
                 try {
-                    push(pop()->get_class()->get_attribute(pop()->to_string()));
+                    auto class_field = pop();
+                    auto name_attribute = pop()->to_string();
+
+                    if(class_field->get_class() == Class::terminal_module) {
+                        push(
+                            get<ModulePtr>(static_cast<Terminal*>(class_field.get())->get_value())->state->at(name_attribute)
+                        );
+                    } else {
+                        push(class_field->get_class()->get_attribute(name_attribute));
+                    }
                 } catch(exception& e) {
                     cerr << e.what() << "\n";
-                    cerr << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
             } break;
@@ -87,7 +99,7 @@ int State::execute(const std::string& source_code) {
                     push(keep); // ref
                 } catch(exception& e) {
                     cerr << e.what() << "\n";
-                    cerr << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
             } break;
@@ -102,7 +114,7 @@ int State::execute(const std::string& source_code) {
 
                 if(!fun) {
                     cerr << "Must a cluster function or builtin not a " <<  fun->to_string() << '\n';
-                    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
 
@@ -114,7 +126,7 @@ int State::execute(const std::string& source_code) {
                         break;
                     } catch(exception& e) {
                         cerr << e.what() << "\n";
-                        cerr << "From line  " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                        print_error_location();
                         return 1;
                     }
                 } else if(auto* bytecode = get_if<shared_ptr<Bytecode>>(&val)) {
@@ -122,7 +134,7 @@ int State::execute(const std::string& source_code) {
                     get_current_frame().pc--;
                 } else {
                     cerr << "Must a cluster function or builtin not a " <<  fun->to_string() << '\n';
-                    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
             } break;
@@ -175,19 +187,29 @@ int State::execute(const std::string& source_code) {
 
             case Opcode::BUILD_STRING:
             case Opcode::BUILD_VECTOR:
+            case Opcode::BUILD_BAG:
+            case Opcode::BUILD_SET:
             case Opcode::BUILD_TUPLE:{
-                vector<ObjectPtr> val = vector<ObjectPtr>(abs(inst.operand));
+                vector<ObjectPtr> val = vector<ObjectPtr>(inst.operand);
 
-                for(int32_t i = 0; i < abs(inst.operand); i++)
-                    val[abs(inst.operand) - 1 - i] = pop();
+                for(int32_t i = 0; i < inst.operand; i++)
+                    val[inst.operand - 1 - i] = pop();
                 
                 if(Opcode::BUILD_STRING == inst.opcode)
-                    push(make_shared<String>(move(val), inst.operand < 0));
+                    push(make_shared<String>(move(val)));
                 else if(Opcode::BUILD_VECTOR == inst.opcode)
-                    push(make_shared<Vector>(move(val), inst.operand < 0));
+                    push(make_shared<Vector>(move(val)));
                 else if(Opcode::BUILD_TUPLE == inst.opcode)
-                    push(make_shared<Tuple>(move(val), inst.operand < 0));
+                    push(make_shared<Tuple>(move(val)));
+                else if(Opcode::BUILD_BAG == inst.opcode)
+                    push(make_shared<Bag>(move(val)));
             }break;
+
+            case Opcode::OPPOSITE: {
+                auto val = pop()->copy();
+                val->opposite();
+                push(val); 
+            } break;
 
             case Opcode::UNARY_OP:{
                 try {
@@ -200,12 +222,13 @@ int State::execute(const std::string& source_code) {
                             } else
                                 res->opposite(); 
                         break;
+                        case UnaryOperator::OPPOSITE: break;
                     }
 
                     push(res);
                 } catch(exception& e) {
                     cerr << e.what() << "\n";
-                    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
             }break;
@@ -218,7 +241,7 @@ int State::execute(const std::string& source_code) {
                     push(this->compute_binary_operation(valA, valB, static_cast<BinaryOperator>(inst.operand)));
                 } catch(exception& e) {
                     cerr << e.what() << "\n";
-                    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
             }break;
@@ -231,13 +254,29 @@ int State::execute(const std::string& source_code) {
                     this->compute_binary_operation(valA, valB, static_cast<BinaryOperator>(inst.operand));
                 } catch(exception& e) {
                     cerr << e.what() << "\n";
-                    cerr << "From line " << get_current_frame().code.get_source_location(get_current_frame().pc).line << endl;
+                    print_error_location();
                     return 1;
                 }
             }break;
+
+            case Opcode::IMPORT: {
+                try {
+                    string name_module = pop()->to_string();
+                    int res = runtime.load_module(name_module);
+                    
+                    variables[name_module] = make_module(runtime.get_module(name_module));
+
+                    if(res != 0)
+                        return res;
+                } catch(exception& e) {
+                    cerr << e.what() << "\n";
+                    print_error_location();
+                    return 1;
+                }
+            } break;
             
             case Opcode::HALT: return inst.operand;
-            default: throw runtime_error("Unknown instruction");
+            default: throw runtime_error("Unknown instruction: " + hoihoi::to_string_opcode(inst.opcode));
         }
 
         get_current_frame().pc++;

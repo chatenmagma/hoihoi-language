@@ -4,17 +4,15 @@
 #include <variant>
 #include <functional>
 #include <vector>
+#include <cmath>
 
 #include "object.hpp"
 #include "vm/bytecode.hpp"
+#include "thing.h"
 
 namespace hoihoi {
+    struct Module;
     using Builtin = std::function<ObjectPtr(std::vector<ObjectPtr>)>;
-
-    /**
-     * \brief Structure cointains nothing, it is just to have the label Thing
-     */
-    struct Thing {};
 
     using TerninalValue = std::variant<
         TernaryLogical,
@@ -23,7 +21,8 @@ namespace hoihoi {
         double,
         Thing,
         std::shared_ptr<Builtin>,
-        std::shared_ptr<Bytecode>
+        std::shared_ptr<Bytecode>,
+        std::shared_ptr<Module>
     >;
 
     /**
@@ -145,7 +144,7 @@ namespace hoihoi {
                     else if constexpr(std::is_same_v<T, char>) return std::string(1, val);
                     else if constexpr(std::is_same_v<T, std::int64_t>) return std::to_string(val);
                     else if constexpr(std::is_same_v<T, double>) return std::to_string(val);
-                    else if constexpr(std::is_same_v<T, Thing>) return std::format("<{} thing>", hoihoi::to_string(get_logical()));
+                    else if constexpr(std::is_same_v<T, Thing>) return hoihoi::to_string(val);
                     else
                         return std::format(
                             "<{} {} {:x}>", 
@@ -158,6 +157,20 @@ namespace hoihoi {
 
             const TerninalValue& get_value() const { return value; }
             void set_value(TerninalValue value) { this->value = value; } 
+
+            std::size_t hash() const override {
+                return std::visit([](auto&& val) -> std::size_t {
+                    using T = std::decay_t<decltype(val)>;
+
+                    if constexpr(std::is_same_v<T, TernaryLogical>) return std::hash<std::uint8_t>{}((std::uint8_t) val);
+                    else if constexpr(std::is_same_v<T, char>) return std::hash<char>{}(val);
+                    else if constexpr(std::is_same_v<T, std::int64_t>) return std::hash<std::int64_t>{}(val);
+                    else if constexpr(std::is_same_v<T, double>) return std::hash<double>{}(val);
+                    else if constexpr(std::is_same_v<T, Thing>) return 0UL;
+                    else
+                        return std::hash<std::intptr_t>{}((std::intptr_t) val.get());
+                }, value);
+            }
     };
 
     constexpr ObjectPtr make_character(char value, bool negative = false) {
@@ -176,12 +189,104 @@ namespace hoihoi {
         return std::make_shared<Terminal>(Class::terminal_builtin, value, negative);
     }
 
+    constexpr ObjectPtr make_module(std::shared_ptr<Module> value) {
+        return std::make_shared<Terminal>(Class::terminal_module, value, false);
+    }
+
+    constexpr ObjectPtr make_builtin(Builtin builtin) {
+        return std::make_shared<Terminal>(
+            Class::terminal_builtin, 
+            std::make_shared<Builtin>(std::move(builtin)),
+            false
+        );
+    }
+
     /**
      * \brief Make a terminal cluster of thing value. The language do that all primitive thing are the same static pointer.
      * \return the terminal from the value
      */
     constexpr ObjectPtr make_thing(bool negative = false) {
         return (negative)? Terminal::negative_thing: Terminal::positive_thing;
+    }
+
+    inline void addition(ObjectPtr& numA, const ObjectPtr& numB) {
+        if(!numA->inherence(Class::terminal_number) || !numB->inherence(Class::terminal_number))
+            throw std::invalid_argument("You must have only numbers");
+
+        bool is_int = true;
+        std::int64_t val_int64 = 0L;
+        double val_double = 0.0;
+
+        if(numB->get_class() == Class::terminal_integer)
+            val_int64 = get<std::int64_t>(static_cast<Terminal*>(numB.get())->get_value());
+        else if(numB->get_class() == Class::terminal_float) {
+            val_double = get<double>(static_cast<Terminal*>(numB.get())->get_value());
+            is_int = (val_double == std::floor(val_double));
+        }
+
+        if(numA->get_class() == Class::terminal_integer) {
+            if(is_int) {
+                static_cast<Terminal*>(numA.get())->set_value(
+                    get<std::int64_t>(static_cast<Terminal*>(numA.get())->get_value()) +
+                    val_int64 + static_cast<std::int64_t>(val_double)
+                );
+            } else {
+                static_cast<Terminal*>(numA.get())->set_value(
+                    static_cast<double>(
+                        get<std::int64_t>(static_cast<Terminal*>(numA.get())->get_value())
+                    ) -
+                    static_cast<double>(val_int64) + val_double
+                );
+            }
+        } else if(numA->get_class() == Class::terminal_float) {
+            static_cast<Terminal*>(numA.get())->set_value(
+                get<double>(static_cast<Terminal*>(numA.get())->get_value()) +
+                val_double + static_cast<double>(val_int64)
+            );
+
+        } else {
+            throw std::runtime_error("Unknown number type");
+        }
+    }
+
+    inline void substract(ObjectPtr& numA, const ObjectPtr& numB) {
+        if(!numA->inherence(Class::terminal_number) || !numB->inherence(Class::terminal_number))
+            throw std::invalid_argument("You must have only numbers");
+
+        bool is_int = true;
+        std::int64_t val_int64 = 0L;
+        double val_double = 0.0;
+
+        if(numB->get_class() == Class::terminal_integer)
+            val_int64 = get<std::int64_t>(static_cast<Terminal*>(numB.get())->get_value());
+        else if(numB->get_class() == Class::terminal_float) {
+            val_double = get<double>(static_cast<Terminal*>(numB.get())->get_value());
+            is_int = (val_double == std::floor(val_double));
+        }
+
+        if(numA->get_class() == Class::terminal_integer) {
+            if(is_int) {
+                static_cast<Terminal*>(numA.get())->set_value(
+                    get<std::int64_t>(static_cast<Terminal*>(numA.get())->get_value()) -
+                    val_int64 + static_cast<std::int64_t>(val_double)
+                );
+            } else {
+                static_cast<Terminal*>(numA.get())->set_value(
+                    static_cast<double>(
+                        get<std::int64_t>(static_cast<Terminal*>(numA.get())->get_value())
+                    ) -
+                    static_cast<double>(val_int64) + val_double
+                );
+            }
+        } else if(numA->get_class() == Class::terminal_float) {
+            static_cast<Terminal*>(numA.get())->set_value(
+                get<double>(static_cast<Terminal*>(numA.get())->get_value()) -
+                val_double + static_cast<double>(val_int64)
+            );
+
+        } else {
+            throw std::runtime_error("Unknown number type");
+        }
     }
 }
 

@@ -15,6 +15,11 @@ program
 stmt
     : simpleStmt NEWLINE+
     | blockStmt
+    | importStmt NEWLINE+
+    ;
+
+importStmt
+    : IMPORT IDENTIFIER (DOT IDENTIFIER)* 
     ;
 
 simpleStmt
@@ -94,40 +99,55 @@ addition
     ;
 
 multiplication
-    : attribute ((STAR | MODULO | SLASH) attribute)*
+    : primary ((STAR | MODULO | SLASH) primary)*
     ;
 
 primary
-    : OPEN_PAREN expr CLOSE_PAREN
-    | IDENTIFIER
-    | fun
+    : MINUS? OPEN_PAREN expr CLOSE_PAREN attribute*
+    | MINUS? IDENTIFIER attribute*
+    | MINUS? fun attribute*
+    | MINUS? cluster attribute*
+    | primitive
     | EMPTY
-    | cluster
     ;
 
 cluster
     : vector
     | bag
-    ;
-
-vector
-    : OPEN_BRACKET (element (COMMA element)*)? CLOSE_BRACKET
-    | primitive
-    ;
-
-bag
-    : OPEN_BRASE (element (COMMA element)*)? CLOSE_BRASE
-    ;
-
-element
-    : primitive
-    | expr
+    | tuple
+    | set
+    | string
     ;
 
 attribute
-    : primary (OPEN_BRACKET expr CLOSE_BRACKET)?
-    | primary (DOT IDENTIFIER)?
-    | primary ((DOT | COLON) fun)?
+    : (DOT | COLON) IDENTIFIER attributeArgs?
+    | OPEN_BRACKET expr CLOSE_BRACKET attributeArgs?
+    ;
+
+attributeArgs
+    : OPEN_PAREN (expr (COMMA expr)*)? CLOSE_PAREN
+    ;
+
+vector
+    : OPEN_BRACKET (expr (COMMA expr)*)? CLOSE_BRACKET
+    | VECTOR OPEN_PAREN (expr (COMMA expr)*)? CLOSE_PAREN
+    ;
+
+bag
+    : OPEN_BRASE (expr (COMMA expr)*)? CLOSE_BRASE
+    | BAG OPEN_PAREN (expr (COMMA expr)*)? CLOSE_PAREN
+    ;
+
+tuple
+    : TUPLE OPEN_PAREN (expr (COMMA expr)*)? CLOSE_PAREN
+    ;
+
+set
+    : SET OPEN_PAREN (expr (COMMA expr)*)? CLOSE_PAREN
+    ;
+
+string
+    : STRING OPEN_PAREN (expr (COMMA expr)*)? CLOSE_PAREN
     ;
 
 fun

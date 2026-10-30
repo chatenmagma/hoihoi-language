@@ -6,6 +6,8 @@
 
 #include "runtime.hpp"
 
+#include <filesystem>
+
 namespace hoihoi {
     struct Frame {
         Bytecode code;
@@ -22,21 +24,35 @@ namespace hoihoi {
 
     class State {
         private:
+            std::unordered_map<std::string, ObjectPtr> variables;
+
             std::vector<ObjectPtr> stack;
             std::vector<Frame> frames;
             std::size_t limit_frames;
-
-            std::unordered_map<std::string, ObjectPtr> variables;
+        
+            std::filesystem::path path;
+            bool main_module;
 
             ObjectPtr& compute_binary_operation(ObjectPtr& valA, const ObjectPtr valB, BinaryOperator operation);
+
+            void print_error_location();
         public:
-            State() {
-                variables = runtime.get_init_global();
-                limit_frames = 255;
-            }
+            State(bool main_module = true)
+                : variables(runtime.get_init_global()), limit_frames(255UL), path(std::filesystem::current_path()), main_module(main_module) {}
+            State(std::filesystem::path path, bool main_module = false)
+                : variables(runtime.get_init_global()), limit_frames(255UL), path(path), main_module(main_module) {}
             ~State() = default;
 
             static Runtime runtime;
+
+            inline ObjectPtr& operator[](const std::string& name_global) { return variables.at(name_global); }
+            inline const ObjectPtr& operator[](const std::string& name_global) const { return variables.at(name_global); }
+
+            inline ObjectPtr& at(const std::string& name_global) { return variables.at(name_global); }
+            inline const ObjectPtr& at(const std::string& name_global) const { return variables.at(name_global); }
+            inline void insert(const std::string& name_global, ObjectPtr object) {
+                variables.insert_or_assign(name_global, std::move(object));
+            }
 
             inline Frame& get_current_frame() { return frames.back(); }
             inline void call_back() { frames.pop_back(); }
@@ -56,6 +72,11 @@ namespace hoihoi {
             }
 
             int execute(const std::string& source_code);
+            inline int execute(std::filesystem::path from, const std::string& source_code) {
+                this->path = from;
+                runtime.set_main_dir(from.parent_path());
+                return execute(source_code);
+            }
     };
 }
 

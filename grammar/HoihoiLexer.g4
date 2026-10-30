@@ -153,14 +153,23 @@ PASS: 'pass';
 WHILE: 'while';
 DEF: 'def';
 
+IMPORT: 'import';
+
 HIGH: 'high';
 NEUTRAL: 'neutral';
 LOW: 'low';
+
+BAG: 'bag';
+SET: 'set';
+STRING: 'str';
+TUPLE: 'tuple';
+VECTOR: 'vector';
 
 // Operators
 
 ARROW: '->';
 DOT: '.';
+DOUBLE_DOT: '..';
 STAR: '*';
 COMMA: ',';
 SEMI_COLON: ';';
@@ -173,7 +182,6 @@ MODULO: '%';
 LESS_THAN: '<';
 GREATER_THAN: '>';
 EQUIVALENT: '<>';
-VARIABLE: '$';
 NUMBER: '#';
 
 OR: 'or';

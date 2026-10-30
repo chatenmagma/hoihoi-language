@@ -5,6 +5,11 @@
 #include <string>
 
 namespace hoihoi {
+    enum class UnaryOperator: std::uint8_t {
+        NOT,
+        OPPOSITE
+    };
+
     enum class BinaryOperator: std::uint8_t {
         PLUS,
         MINUS,
@@ -46,6 +51,8 @@ namespace hoihoi {
         BUILD_TUPLE,
         BUILD_VECTOR,
 
+        OPPOSITE,
+
         PUSH,
         POP,
 
@@ -62,6 +69,7 @@ namespace hoihoi {
 
         CALL,
         RETURN,
+        IMPORT,
 
         UNARY_OP,
         BINARY_OP,
@@ -90,6 +98,8 @@ namespace hoihoi {
             case Opcode::BUILD_TUPLE: return "BUILD_TUPLE";
             case Opcode::BUILD_VECTOR: return "BUILD_VECTOR";
 
+            case Opcode::OPPOSITE: return "OPPOSITE";
+
             case Opcode::PUSH: return "PUSH"; 
             case Opcode::POP: return "POP"; 
             case Opcode::LOAD_CONST: return "LOAD_CONST"; 
@@ -103,6 +113,7 @@ namespace hoihoi {
             case Opcode::JUMP_ABSOLUTE: return "JUMP_ABSOLUTE"; 
             case Opcode::CALL: return "CALL"; 
             case Opcode::RETURN: return "RETURN"; 
+            case Opcode::IMPORT: return "IMPORT";
             case Opcode::UNARY_OP: return "UNARY_OP";
             case Opcode::BINARY_OP: return "BINARY_OP";
             case Opcode::ASSIGN_BINARY_OP: return "ASSIGN_BINARY_OP";

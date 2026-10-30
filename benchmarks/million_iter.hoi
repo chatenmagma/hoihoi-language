@@ -1,0 +1,4 @@
+iter = make_thing(1000000)
+
+while iter:
+    iter -= 1

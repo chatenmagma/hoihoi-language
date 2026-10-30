@@ -1,6 +1,7 @@
 #include "parser/ast_builder.hpp"
 
 #include <algorithm>
+#include "utils/formatter.hpp"
 
 #include "HoihoiLexer.h"
 
@@ -46,7 +47,8 @@ unique_ptr<Statement> AstBuilder::build_statement(HoihoiParser::StmtContext* ctx
             return build_while_statement(whileStmt);
         if(auto funStmt = block->funStmt())
             return build_function_declaration_statement(funStmt);
-    } 
+    } else if(auto import = ctx->importStmt())
+        return build_import_statement(import);
 
     throw runtime_error("Unknow statement");
 }
@@ -106,7 +108,7 @@ unique_ptr<Expression> AstBuilder::build_expression(HoihoiParser::ExprContext* c
 
     if(ctx->NOT())
         return make_unique<UnaryExpression>(
-            get_source(ctx->NOT()->getSymbol()),
+            get_source(ctx->getStart()),
             UnaryOperator::NOT,
             move(build_or(ctx->or_()))
         );
@@ -232,6 +234,18 @@ unique_ptr<Expression> AstBuilder::build_compaission(HoihoiParser::ComparaisionC
     throw runtime_error("Unknow comparaision");
 }
 
+unique_ptr<Statement> AstBuilder::build_import_statement(HoihoiParser::ImportStmtContext* ctx) {
+    string path;
+
+    for(size_t i = 0UL; i < ctx->IDENTIFIER().size(); i++) {
+        path += ctx->IDENTIFIER(i)->getText();
+
+        if(i < ctx->IDENTIFIER().size() - 1) path += ".";
+    }
+
+    return make_unique<ImportStatement>(move(path));
+}
+
 unique_ptr<Expression> AstBuilder::build_or(HoihoiParser::OrContext* ctx) {
     if(ctx->and_().empty())
         throw runtime_error("No expression found in the or");
@@ -291,13 +305,13 @@ unique_ptr<Expression> AstBuilder::build_and(HoihoiParser::AndContext* ctx) {
 }
 
 unique_ptr<Expression> AstBuilder::build_multiplication(HoihoiParser::MultiplicationContext* ctx) {
-    if(ctx->attribute().empty())
+    if(ctx->primary().empty())
         throw runtime_error("No expressions found");
     
-    auto left = build_attribute(ctx->attribute(0));
+    auto left = build_primary(ctx->primary(0));
 
-    for(size_t i = 1UL; i < ctx->attribute().size(); ++i) {
-        auto right = build_attribute(ctx->attribute(i));
+    for(size_t i = 1UL; i < ctx->primary().size(); ++i) {
+        auto right = build_primary(ctx->primary(i));
 
         BinaryOperator op;
         SourceLocation location;
@@ -311,6 +325,8 @@ unique_ptr<Expression> AstBuilder::build_multiplication(HoihoiParser::Multiplica
         } else if(ctx->MODULO(i - 1)) {
             op = BinaryOperator::MODULO;
             location = get_source(ctx->MODULO(i - 1)->getSymbol());
+        } else {
+            throw runtime_error("Unknown operation `" + ctx->toString() + "`");
         }
 
         left = make_unique<BinaryExpression>(
@@ -356,51 +372,78 @@ unique_ptr<Expression> AstBuilder::build_addition(HoihoiParser::AdditionContext*
 }
 
 unique_ptr<Expression> AstBuilder::build_primary(HoihoiParser::PrimaryContext* ctx) {
-    if(ctx->IDENTIFIER())
-        return make_unique<Variable>(
+    unique_ptr<Expression> value;
+
+    if(ctx->IDENTIFIER()) {
+        value = make_unique<Variable>(
             get_source(ctx->IDENTIFIER()->getSymbol()),
             ctx->IDENTIFIER()->getText()
         );
-    else if(ctx->fun())
-        return build_function(ctx->fun());
-    else if(ctx->expr())
-        return build_expression(ctx->expr());
-    else if(ctx->cluster())
-        return build_cluster(ctx->cluster());
-    else if(ctx->EMPTY()) {
+    }
+    else if(ctx->fun()) {
+        value = build_function(ctx->fun());
+    } else if(ctx->expr()) {
+        value = build_expression(ctx->expr());
+    } else if(ctx->cluster()) {
+        value = build_cluster(ctx->cluster());
+    } else if(ctx->primitive()) {
+        vector<unique_ptr<Expression>> args;
+
+        args.push_back(move(build_primitive(ctx->primitive())));
+
+        return make_unique<ClusterLiteral>(get_source(ctx->getStart()), move(args));
+    } else if(ctx->EMPTY()) {
         vector<unique_ptr<Expression>> values;
         return make_unique<ClusterLiteral>(get_source(ctx->EMPTY()->getSymbol()), move(values));
+    } else {
+        throw runtime_error("Unknow primary expression");
     }
-    
-    throw runtime_error("Unknow primary expression");
+
+    if(ctx->MINUS())
+        value = make_unique<UnaryExpression>(
+            get_source(ctx->MINUS()->getSymbol()),
+            UnaryOperator::OPPOSITE,
+            move(value)
+        );
+
+    if(ctx->attribute().empty())
+            return value;
+
+    for(auto* attribute: ctx->attribute())
+        value = build_attribute(move(value), attribute);
+
+    return value;
 }
 
 unique_ptr<Expression> AstBuilder::build_cluster(HoihoiParser::ClusterContext* ctx) {
     vector<unique_ptr<Expression>> values;
 
-    if(ctx->vector()->primitive())
-        values.push_back(build_primitive(ctx->vector()->primitive()));
-
-    vector<HoihoiParser::ElementContext*> elements;
-    KindCluster kind;
+    vector<HoihoiParser::ExprContext*> elements;
+    KindCluster kind = KindCluster::VECTOR;
 
     if(ctx->vector()) {
-        elements = ctx->vector()->element();
+        elements = ctx->vector()->expr();
         kind = KindCluster::VECTOR;
     } else if(ctx->bag()) {
-        elements = ctx->bag()->element();
+        elements = ctx->bag()->expr();
         kind = KindCluster::BAG;
+    } else if(ctx->tuple()) {
+        elements = ctx->tuple()->expr();
+        kind = KindCluster::TUPLE;
+    } else if(ctx->set()) {
+        elements = ctx->set()->expr();
+        kind = KindCluster::SET;
+    } else if(ctx->string()) {
+        elements = ctx->string()->expr();
+        kind = KindCluster::STRING;
+    } else {
+        throw runtime_error("Unknow cluster type");
     }
-
 
     for(auto* elem: elements) {
-        if(elem->primitive())
-            values.push_back(build_primitive(elem->primitive()));
-        else
-            values.push_back(build_expression(elem->expr()));
+            values.push_back(build_expression(elem));
     }
-
-    return make_unique<ClusterLiteral>(get_source(ctx->getStart()), move(values), kind, false);
+    return make_unique<ClusterLiteral>(get_source(ctx->getStart()), move(values), kind);
 }
 
 unique_ptr<Expression> AstBuilder::build_function(HoihoiParser::FunContext* ctx) {
@@ -409,22 +452,6 @@ unique_ptr<Expression> AstBuilder::build_function(HoihoiParser::FunContext* ctx)
     for(auto* exp: ctx->expr())
         args.push_back(move(build_expression(exp)));
 
-    if(ctx->IDENTIFIER()->getText() == "tuple") {
-        return make_unique<ClusterLiteral>(
-            get_source(ctx->getStart()),
-            move(args),
-            KindCluster::TUPLE,
-            false
-        );
-    } else if(ctx->IDENTIFIER()->getText() == "set") {
-        return make_unique<ClusterLiteral>(
-            get_source(ctx->getStart()),
-            move(args),
-            KindCluster::SET,
-            false
-        );
-    }
-  
     return make_unique<Function>(
         get_source(ctx->IDENTIFIER()->getSymbol()),
         ctx->IDENTIFIER()->getText(),
@@ -432,42 +459,30 @@ unique_ptr<Expression> AstBuilder::build_function(HoihoiParser::FunContext* ctx)
     );
 }
 
-unique_ptr<Expression> AstBuilder::build_attribute(HoihoiParser::AttributeContext* ctx) {
-    auto primary = build_primary(ctx->primary());
-
-    if(!ctx->fun() && !ctx->expr() && !ctx->IDENTIFIER())
-        return primary;
-
+unique_ptr<Expression> AstBuilder::build_attribute(std::unique_ptr<Expression> value, HoihoiParser::AttributeContext* ctx) {
     unique_ptr<Expression> name = nullptr;
     vector<unique_ptr<Expression>> args;
-    KindAttribute kind;
+    KindAttribute kind = KindAttribute::GET;
 
     if(ctx->IDENTIFIER()) {
         name = make_unique<Primitive>(
             get_source(ctx->IDENTIFIER()->getSymbol()),
             ctx->IDENTIFIER()->toString()
         );
-
-        kind = KindAttribute::GET;
-    } else if(ctx->expr()) {
-        name = build_expression(ctx->expr());
-        
-        kind = KindAttribute::GET;
     } else {
-        name = make_unique<Primitive>(
-            get_source(ctx->fun()->IDENTIFIER()->getSymbol()),
-            ctx->fun()->IDENTIFIER()->toString()
-        );
+        name = build_expression(ctx->expr());
+    }
 
-        kind = (ctx->DOT())? KindAttribute::CALL : KindAttribute::SELF_CALL;
+    if(ctx->attributeArgs()) {
+        kind = (ctx->DOT())? KindAttribute::CALL: KindAttribute::SELF_CALL;
 
-        for(auto* arg: ctx->fun()->expr())
-            args.push_back(move(build_expression(arg)));
+        for(const auto& e: ctx->attributeArgs()->expr())
+            args.push_back(move(build_expression(e)));
     }
 
     return make_unique<Attribute>(
         get_source(ctx->getStart()),
-        move(primary),
+        move(value),
         move(name),
         kind,
         move(args)
@@ -482,18 +497,12 @@ std::unique_ptr<Expression> AstBuilder::build_primitive(HoihoiParser::PrimitiveC
 }
 
 InstancePrimitive AstBuilder::build_instance_primitive(HoihoiParser::PrimitiveContext* ctx) {
-    if(ctx->HIGH()) return TernaryLogical::HIGH;
-    if(ctx->NEUTRAL()) return TernaryLogical::NEUTRAL;
-    if(ctx->LOW()) return TernaryLogical::LOW;
+    if(ctx->HIGH()) return HOI_TERNARY_HIGH;
+    if(ctx->NEUTRAL()) return HOI_TERNARY_NEUTRAL;
+    if(ctx->LOW()) return HOI_TERNARY_LOW;
     
     if(!ctx->number()) {
-        auto s = ctx->STRING_LITERAL()->getText();
-        s.erase(
-            remove_if(s.begin(), s.end(), [](char c) { return c == '"' || c == '\'' || c == '\\'; }),
-            s.end()
-        );
-
-        return s;
+        return source_str_to_str(ctx->STRING_LITERAL()->getText());
     }
 
     if(ctx->number()->FLOAT_LITERAL())

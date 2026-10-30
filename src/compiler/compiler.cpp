@@ -1,5 +1,6 @@
 #include <iostream>
 #include <bit>
+#include <filesystem>
 
 #include "compiler/compiler.hpp"
 #include "value/value.hpp"
@@ -25,9 +26,7 @@ size_t Compiler::compile_statement(const Statement& stmt) {
         code.emit_instruction(Opcode::ASSIGN_BINARY_OP, static_cast<int32_t>(assign_op->op));
 
         return nb + 2;
-    }
-
-    if(auto* assign = dynamic_cast<const AssignementStatement*>(&stmt)) {
+    } else if(auto* assign = dynamic_cast<const AssignementStatement*>(&stmt)) {
         size_t nb = compile_expression(*assign->expression);
 
         switch(symbol.get_type(assign->name)) {
@@ -36,18 +35,14 @@ size_t Compiler::compile_statement(const Statement& stmt) {
         }
 
         return nb + 1;
-    }
-
-    if(auto* expr = dynamic_cast<const ExpressionStatement*>(&stmt))
+    } else if(auto* expr = dynamic_cast<const ExpressionStatement*>(&stmt)) {
         return compile_expression(*expr->expression);
-
-    if(auto* ifStmt = dynamic_cast<const IfStatement*>(&stmt))
+    } else if(auto* ifStmt = dynamic_cast<const IfStatement*>(&stmt)) {
         return compile_if_statement(*ifStmt);
 
-    if(auto* whileStmt = dynamic_cast<const WhileStatement*>(&stmt)) 
+    } else if(auto* whileStmt = dynamic_cast<const WhileStatement*>(&stmt)) {
         return compile_while_statement(*whileStmt);
-
-    if(auto* fun_def = dynamic_cast<const FunctionDeclaration*>(&stmt)) {
+    } else if(auto* fun_def = dynamic_cast<const FunctionDeclaration*>(&stmt)) {
         TableSymbol new_table = TableSymbol(fun_def->args);
         
         new_table.scan(fun_def->body, 1);
@@ -66,12 +61,15 @@ size_t Compiler::compile_statement(const Statement& stmt) {
         }
 
         return 2;
-    }
-
-    if(auto* ret = dynamic_cast<const ReturnStatement*>(&stmt)) {
+    }else if(auto* ret = dynamic_cast<const ReturnStatement*>(&stmt)) {
         size_t nb = (!ret->expression)? 0UL: compile_expression(*ret->expression);
 
         code.emit_instruction(Opcode::RETURN);
+
+        return nb + 1;
+    }else if(auto* import = dynamic_cast<const ImportStatement*>(&stmt)) {
+        size_t nb = compile_primitive(import->path);
+        code.emit_instruction(Opcode::IMPORT);
 
         return nb + 1;
     }
@@ -117,10 +115,9 @@ size_t Compiler::compile_primitive(const InstancePrimitive prim) {
 }
 
 size_t Compiler::compile_expression(const Expression& expr) {
-    if(auto* primitive = dynamic_cast<const Primitive*>(&expr))
+    if(auto* primitive = dynamic_cast<const Primitive*>(&expr)) {
         return compile_primitive(primitive->value);
-
-    if(auto* var = dynamic_cast<const Variable*>(&expr)) {
+    } else if(auto* var = dynamic_cast<const Variable*>(&expr)) {
         size_t pos;
         switch(symbol.get_type(var->name)) {
             case VariableType::GLOBAL: pos = code.emit_instruction(Opcode::LOAD_GLOBAL, symbol.get_index(var->name)); break;
@@ -130,9 +127,7 @@ size_t Compiler::compile_expression(const Expression& expr) {
         code.emit_source_location(pos, var->location);
 
         return 1;
-    }
-
-    if(auto* fun = dynamic_cast<const Function*>(&expr)) {
+    } else if(auto* fun = dynamic_cast<const Function*>(&expr)) {
         size_t nb = 1;
 
         size_t pos;
@@ -152,9 +147,7 @@ size_t Compiler::compile_expression(const Expression& expr) {
         );
 
         return nb + 1;
-    }
-
-    if(auto* attribute = dynamic_cast<const Attribute*>(&expr)) {
+    } else if(auto* attribute = dynamic_cast<const Attribute*>(&expr)) {
         size_t nb = compile_expression(*attribute->name) + compile_expression(*attribute->value);
 
         code.emit_source_location(
@@ -174,20 +167,23 @@ size_t Compiler::compile_expression(const Expression& expr) {
         );
 
         return nb + 2;
-    }
-
-    if(auto* unary_op = dynamic_cast<const UnaryExpression*>(&expr)) {
+    } else if(auto* unary_op = dynamic_cast<const UnaryExpression*>(&expr)) {
         size_t nb = compile_expression(*unary_op->value);
 
-        code.emit_source_location(
-            code.emit_instruction(Opcode::UNARY_OP, static_cast<int>(unary_op->op)),
-            unary_op->location
-        );
+        if(unary_op->op == UnaryOperator::OPPOSITE) {
+            code.emit_source_location(
+                code.emit_instruction(Opcode::OPPOSITE),
+                unary_op->location
+            );
+        } else {
+            code.emit_source_location(
+                code.emit_instruction(Opcode::UNARY_OP, static_cast<int>(unary_op->op)),
+                unary_op->location
+            );
+        }
 
         return nb + 1;
-    }
-
-    if(auto* binary_op = dynamic_cast<const BinaryExpression*>(&expr)) {
+    } else if(auto* binary_op = dynamic_cast<const BinaryExpression*>(&expr)) {
         size_t nb = 0;
 
         nb += compile_expression(*binary_op->left);
@@ -199,9 +195,7 @@ size_t Compiler::compile_expression(const Expression& expr) {
         );
 
         return nb + 1;
-    }
-
-    if(auto* cluster_literal = dynamic_cast<const ClusterLiteral*>(&expr)) {
+    } else if(auto* cluster_literal = dynamic_cast<const ClusterLiteral*>(&expr)) {
         size_t nb = 0UL;
         size_t nb_elem = 0UL;
 
@@ -217,9 +211,15 @@ size_t Compiler::compile_expression(const Expression& expr) {
             case KindCluster::BAG: opcode = Opcode::BUILD_BAG; break;
             case KindCluster::TUPLE: opcode = Opcode::BUILD_TUPLE; break;
             case KindCluster::SET: opcode = Opcode::BUILD_SET; break;
+            case KindCluster::STRING: opcode = Opcode::BUILD_STRING; break;
         }
         
-        code.emit_instruction(opcode, nb_elem * ((cluster_literal->negative)? -1: 1));
+        code.emit_instruction(opcode, nb_elem);
+
+        if(cluster_literal->kind == KindCluster::STRING) {
+            code.emit_instruction(Opcode::BUILD_VECTOR, 1);
+            nb += 1;
+        }
 
         return nb + 1;
     }
@@ -228,7 +228,7 @@ size_t Compiler::compile_expression(const Expression& expr) {
 }
 
 std::size_t Compiler::compile_if_statement(const IfStatement& if_stmt) {
-    size_t jumb_else_pos;
+    size_t jumb_else_pos = 0UL;
 
     size_t body_else_sz = 0;
     size_t body_sz = 0;

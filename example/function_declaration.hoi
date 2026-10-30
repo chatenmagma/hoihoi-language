@@ -1,0 +1,15 @@
+# Let's introduce the declaration of functions
+
+def print_hello_world():
+    print("Hello world")
+
+print_hello_world()     # => "hello world"
+
+def print_have_heap(value):
+    if value:
+        print(value, "is well a heap")
+    else
+        print(value, "is well neutral or low")
+
+print_have_heap([])     # => [] is well neutral or low
+print_have_heap([1, 2]) # => [1, 2] is well neutral or low

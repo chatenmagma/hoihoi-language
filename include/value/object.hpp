@@ -5,7 +5,8 @@
 #include <memory>
 #include <unordered_map>
 
-#include "ternary_logical.hpp"
+#include "thing.h"
+#include "ternary_logical.h"
 
 namespace hoihoi {
     class Class;
@@ -17,6 +18,7 @@ namespace hoihoi {
         private:
             std::unordered_map<std::string, ObjectPtr> attributes;
             Class* parent;
+            std::string name;
         public:
             Class(const std::string& class_name, std::shared_ptr<Class> parent = nullptr);
             ~Class() = default;
@@ -39,8 +41,9 @@ namespace hoihoi {
                 static std::shared_ptr<Class> terminal_builtin;
                 static std::shared_ptr<Class> terminal_funtion;
                 static std::shared_ptr<Class> terminal_thing;
+                static std::shared_ptr<Class> terminal_module;
 
-            std::string get_name() const;
+            inline std::string get_name() const noexcept { return name; }
 
             ObjectPtr get_attribute(const std::string& name) const {
                 auto it = attributes.find(name);
@@ -117,13 +120,25 @@ namespace hoihoi {
             inline bool is_high() const { return !negative & !is_neutral(); }
 
             inline TernaryLogical get_logical() const {
-                return is_neutral()? TernaryLogical::NEUTRAL:
-                       is_high()? TernaryLogical::HIGH: TernaryLogical::LOW;
+                return is_neutral()? HOI_TERNARY_NEUTRAL:
+                       is_high()? HOI_TERNARY_HIGH: HOI_TERNARY_LOW;
             }
 
             inline bool is_negative() const noexcept { return negative; }
 
             inline std::shared_ptr<Class> get_class() const noexcept { return klass; }
+            inline bool inherence(std::shared_ptr<Class> target) const { return klass && klass->inherence(target); }
+            virtual std::size_t hash() const { return std::hash<std::intptr_t>{}((std::intptr_t) this); }
+    };
+}
+
+namespace std {
+    template<>
+    struct hash<hoihoi::ObjectPtr> {
+        std::size_t operator()(const hoihoi::ObjectPtr& obj) const {
+            if(!obj) return 0UL;
+            return obj->hash();
+        }
     };
 }
 
